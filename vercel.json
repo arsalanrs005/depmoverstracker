@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-8x8-analytics",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}
