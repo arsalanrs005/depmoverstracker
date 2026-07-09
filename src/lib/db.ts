@@ -5,6 +5,8 @@ import type { ParsedAlowareCall } from './aloware-webhook';
 import type { CallTrack } from './tracks';
 import { isValidTrack } from './tracks';
 import { normalizeTrackKpiRow, type TrackKpiRow } from './dashboard-kpis';
+import { buildScoreboardPayload, getScoreboardWeek } from './scoreboard-week';
+import type { QuoteTrackingPayload } from './quote-tracking';
 
 let sql: ReturnType<typeof postgres> | null = null;
 
@@ -709,4 +711,324 @@ export async function getDashboardStats(period: DashboardPeriod = 'day', trackFi
     period,
     trackFilter: track,
   };
+}
+
+export type ScoreboardTeamFilter = 'all' | 'aloware' | '8x8';
+
+export async function getScoreboardStats(teamFilter: ScoreboardTeamFilter = 'all') {
+  const db = getDb();
+  const weekMeta = getScoreboardWeek();
+
+  const teams =
+    teamFilter === 'aloware'
+      ? ['inbound_closers']
+      : teamFilter === '8x8'
+        ? ['8x8_closer']
+        : ['inbound_closers', '8x8_closer'];
+
+  const roster = await db`
+    SELECT name AS agent_name, team
+    FROM agents
+    WHERE team = ANY(${teams})
+    ORDER BY name ASC
+  `;
+
+  const rows = await db`
+    SELECT
+      ag.name AS agent_name,
+      EXTRACT(ISODOW FROM COALESCE(cs.started_at, cs.created_at) AT TIME ZONE 'America/New_York')::int AS dow,
+      COUNT(*)::int AS leads,
+      COUNT(*) FILTER (WHERE cs.call_outcome = 'good')::int AS deals,
+      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents
+    FROM call_sessions cs
+    INNER JOIN agents ag ON (
+      (ag.platform = 'aloware' AND cs.aloware_user_id = ag.agent_id_aloware AND ag.team = 'inbound_closers')
+      OR (ag.platform = '8x8' AND cs.agent_id_8x8 = ag.agent_id_8x8 AND ag.team = '8x8_closer')
+    )
+    WHERE COALESCE(cs.started_at, cs.created_at) >= ${weekMeta.weekStart}
+      AND COALESCE(cs.started_at, cs.created_at) < ${weekMeta.weekEnd}
+      AND EXTRACT(ISODOW FROM COALESCE(cs.started_at, cs.created_at) AT TIME ZONE 'America/New_York') BETWEEN 1 AND 6
+      AND ag.team = ANY(${teams})
+      AND cs.track IN ('aloware_closer', '8x8_closer')
+    GROUP BY ag.name, dow
+    ORDER BY ag.name, dow
+  `;
+
+  return buildScoreboardPayload(
+    roster.map((r) => ({
+      agent_name: String(r.agent_name),
+      team: String(r.team),
+    })),
+    rows.map((r) => ({
+      agent_name: String(r.agent_name),
+      dow: Number(r.dow),
+      leads: Number(r.leads),
+      deals: Number(r.deals),
+      revenue_cents: Number(r.revenue_cents ?? 0),
+    })),
+    weekMeta
+  );
+}
+
+const QUOTE_TRACKS = ['aloware_closer', '8x8_closer'] as const;
+
+function quoteTrackSql(trackFilter?: CallTrack) {
+  if (trackFilter === 'aloware_closer' || trackFilter === '8x8_closer') {
+    return trackFilter;
+  }
+  return null;
+}
+
+export async function getQuoteTrackingStats(
+  period: DashboardPeriod = 'week',
+  trackFilter?: CallTrack
+) {
+  const db = getDb();
+  const interval = periodInterval(period);
+  const track = quoteTrackSql(trackFilter);
+  const tracks = track ? [track] : [...QUOTE_TRACKS];
+
+  const [summaryRow] = await db`
+    SELECT
+      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes_sent,
+      COUNT(*) FILTER (WHERE cs.quote_type = 'booked')::int AS booked_count,
+      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS total_quote_value_cents,
+      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.quote_type = 'booked' AND cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents,
+      COUNT(*) FILTER (WHERE cs.job_value_cents IS NOT NULL)::int AS quotes_with_value
+    FROM call_sessions cs
+    WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
+      AND cs.track = ANY(${tracks})
+      AND (
+        (cs.track = 'aloware_closer' AND cs.source IN ('aloware_inbound', 'aloware_outbound'))
+        OR (cs.track = '8x8_closer' AND cs.source IN ('8x8_inbound', '8x8_outbound'))
+      )
+  `;
+
+  const [depositRow] = await db`
+    SELECT COUNT(*)::int AS deposits_collected
+    FROM deal_events de
+    WHERE de.event_at >= now() - ${interval}::interval
+      AND (
+        de.stage_name ILIKE '%deposit%'
+        OR de.stage_name ILIKE '%book%'
+        OR de.stage_name ILIKE '%won%'
+        OR de.stage_id ILIKE '%deposit%'
+        OR de.stage_id ILIKE '%book%'
+      )
+  `;
+
+  const quotesSent = Number(summaryRow?.quotes_sent ?? 0);
+  const bookedCount = Number(summaryRow?.booked_count ?? 0);
+  const totalQuoteValueCents = Number(summaryRow?.total_quote_value_cents ?? 0);
+  const revenueCents = Number(summaryRow?.revenue_cents ?? 0);
+  const quotesWithValue = Number(summaryRow?.quotes_with_value ?? 0);
+  const depositsCollected = bookedCount > 0 ? bookedCount : Number(depositRow?.deposits_collected ?? 0);
+  const quoteToDepositPct =
+    quotesSent > 0 ? Math.round((depositsCollected / quotesSent) * 10000) / 100 : null;
+  const avgQuoteValueCents =
+    quotesWithValue > 0 ? Math.round(totalQuoteValueCents / quotesWithValue) : null;
+
+  const dailyRows = await db`
+    SELECT
+      (COALESCE(cs.started_at, cs.created_at) AT TIME ZONE 'America/New_York')::date AS day,
+      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes
+    FROM call_sessions cs
+    WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
+      AND cs.track = ANY(${tracks})
+      AND (
+        (cs.track = 'aloware_closer' AND cs.source IN ('aloware_inbound', 'aloware_outbound'))
+        OR (cs.track = '8x8_closer' AND cs.source IN ('8x8_inbound', '8x8_outbound'))
+      )
+    GROUP BY day
+    ORDER BY day ASC
+  `;
+
+  const agentQuoteRows = await db`
+    SELECT
+      COALESCE(ag.name, cs.agent_name, 'Unknown') AS agent_name,
+      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes_sent,
+      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents
+    FROM call_sessions cs
+    LEFT JOIN agents ag ON (
+      (cs.track = 'aloware_closer' AND cs.aloware_user_id = ag.agent_id_aloware AND ag.platform = 'aloware')
+      OR (cs.track = '8x8_closer' AND cs.agent_id_8x8 = ag.agent_id_8x8 AND ag.platform = '8x8')
+    )
+    WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
+      AND cs.track = ANY(${tracks})
+      AND (
+        (cs.track = 'aloware_closer' AND cs.source IN ('aloware_inbound', 'aloware_outbound'))
+        OR (cs.track = '8x8_closer' AND cs.source IN ('8x8_inbound', '8x8_outbound'))
+      )
+      AND (cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')
+    GROUP BY COALESCE(ag.name, cs.agent_name, 'Unknown')
+    ORDER BY quotes_sent DESC
+  `;
+
+  const agentDepositRows = await db`
+    SELECT agent_name, COUNT(*)::int AS deposits_collected
+    FROM deal_events de
+    WHERE de.event_at >= now() - ${interval}::interval
+      AND (
+        de.stage_name ILIKE '%deposit%'
+        OR de.stage_name ILIKE '%book%'
+        OR de.stage_name ILIKE '%won%'
+        OR de.stage_id ILIKE '%deposit%'
+        OR de.stage_id ILIKE '%book%'
+      )
+      AND de.agent_name IS NOT NULL
+    GROUP BY de.agent_name
+  `;
+
+  const depositMap = new Map(
+    agentDepositRows.map((r) => [String(r.agent_name), Number(r.deposits_collected)])
+  );
+
+  const byAgent = agentQuoteRows.map((r) => {
+    const name = String(r.agent_name);
+    return {
+      agent_name: name,
+      quotes_sent: Number(r.quotes_sent),
+      deposits_collected: depositMap.get(name) ?? 0,
+      revenue: Math.round(Number(r.revenue_cents ?? 0) / 100),
+    };
+  });
+
+  for (const [name, deposits] of depositMap) {
+    if (!byAgent.some((a) => a.agent_name === name)) {
+      byAgent.push({
+        agent_name: name,
+        quotes_sent: 0,
+        deposits_collected: deposits,
+        revenue: 0,
+      });
+    }
+  }
+
+  byAgent.sort((a, b) => b.quotes_sent - a.quotes_sent || b.deposits_collected - a.deposits_collected);
+
+  const dailyTrend = dailyRows.map((r) => {
+    const d = new Date(String(r.day));
+    return {
+      date: String(r.day),
+      label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+      quotes: Number(r.quotes),
+    };
+  });
+
+  const nowEt = new Date();
+  const monthLabel = nowEt.toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'America/New_York',
+  });
+
+  return {
+    period,
+    trackFilter: track,
+    summary: {
+      quotes_sent: quotesSent,
+      total_quote_value: Math.round(totalQuoteValueCents / 100),
+      deposits_collected: depositsCollected,
+      revenue_generated: Math.round(revenueCents / 100),
+      quote_to_deposit_pct: quoteToDepositPct,
+      avg_quote_value: avgQuoteValueCents != null ? Math.round(avgQuoteValueCents / 100) : null,
+    },
+    dailyTrend,
+    monthlyQuoteValue: [{ label: monthLabel, value: quotesSent }],
+    byAgent,
+    dataNote:
+      totalQuoteValueCents > 0
+        ? 'Dollar values from manager-entered job details on quoted/booked calls.'
+        : 'Enter job value on quoted/booked Aloware calls below — counts come from dispositions.',
+  } satisfies QuoteTrackingPayload;
+}
+
+export type QuoteEntryCall = {
+  id: string;
+  phone: string;
+  lead_name: string | null;
+  agent_name: string | null;
+  started_at: Date | null;
+  disposition_code: string | null;
+  call_outcome: string;
+  quote_type: string | null;
+  job_value_cents: number | null;
+  move_date: string | null;
+  origin_city: string | null;
+  destination_city: string | null;
+  quote_details_at: Date | null;
+};
+
+export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]> {
+  const db = getDb();
+  const rows = await db`
+    SELECT
+      cs.id,
+      cs.phone,
+      cs.lead_name,
+      COALESCE(ag.name, cs.aloware_user_name, cs.agent_name) AS agent_name,
+      cs.started_at,
+      cs.disposition_code,
+      cs.call_outcome,
+      cs.quote_type,
+      cs.job_value_cents,
+      cs.move_date::text AS move_date,
+      cs.origin_city,
+      cs.destination_city,
+      cs.quote_details_at
+    FROM call_sessions cs
+    LEFT JOIN agents ag ON ag.agent_id_aloware = cs.aloware_user_id AND ag.platform = 'aloware'
+    WHERE cs.track = 'aloware_closer'
+      AND cs.source IN ('aloware_inbound', 'aloware_outbound')
+      AND (
+        cs.call_outcome = 'good'
+        OR cs.disposition_code = 'connected-quoted'
+      )
+    ORDER BY
+      (cs.job_value_cents IS NULL) DESC,
+      COALESCE(cs.started_at, cs.created_at) DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((r) => ({
+    id: String(r.id),
+    phone: String(r.phone),
+    lead_name: r.lead_name != null ? String(r.lead_name) : null,
+    agent_name: r.agent_name != null ? String(r.agent_name) : null,
+    started_at: r.started_at as Date | null,
+    disposition_code: r.disposition_code != null ? String(r.disposition_code) : null,
+    call_outcome: String(r.call_outcome),
+    quote_type: r.quote_type != null ? String(r.quote_type) : null,
+    job_value_cents: r.job_value_cents != null ? Number(r.job_value_cents) : null,
+    move_date: r.move_date != null ? String(r.move_date) : null,
+    origin_city: r.origin_city != null ? String(r.origin_city) : null,
+    destination_city: r.destination_city != null ? String(r.destination_city) : null,
+    quote_details_at: r.quote_details_at as Date | null,
+  }));
+}
+
+export async function updateQuoteDetails(params: {
+  callId: string;
+  quoteType: 'quoted' | 'booked';
+  jobValueCents: number;
+  moveDate?: string | null;
+  originCity?: string | null;
+  destinationCity?: string | null;
+  enteredBy?: string | null;
+}) {
+  const db = getDb();
+  const rows = await db`
+    UPDATE call_sessions SET
+      quote_type = ${params.quoteType},
+      job_value_cents = ${params.jobValueCents},
+      move_date = ${params.moveDate || null},
+      origin_city = ${params.originCity?.trim() || null},
+      destination_city = ${params.destinationCity?.trim() || null},
+      quote_details_at = now(),
+      quote_entered_by = ${params.enteredBy || 'manager'},
+      updated_at = now()
+    WHERE id = ${params.callId}
+      AND track = 'aloware_closer'
+    RETURNING id, quote_type, job_value_cents, move_date, origin_city, destination_city
+  `;
+  return rows[0] ?? null;
 }

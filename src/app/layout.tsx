@@ -1,6 +1,7 @@
+import { Suspense } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-import { NavBar } from '@/components/NavBar';
+import { AppShell } from '@/components/AppShell';
 import type { ReactNode } from 'react';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -10,16 +11,17 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: 'UGVL Call Tracker',
-  description: 'Dual-stack call tracker — Aloware closers + 8x8 Verification/CS + Retell + GHL',
+  title: 'Dependable Movers · Call Command Center',
+  description: 'Sales Command Center — Aloware closers + 8x8 Verification/CS call tracking',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={jakarta.variable}>
       <body>
-        <NavBar />
-        <main className="container">{children}</main>
+        <Suspense fallback={null}>
+          <AppShell>{children}</AppShell>
+        </Suspense>
       </body>
     </html>
   );

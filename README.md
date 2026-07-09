@@ -35,6 +35,14 @@ Open http://localhost:3000
 | `/api/dashboard/stats?period=day` | GET |
 | `/api/webhooks/retell` | POST |
 
+## Deploy (Vercel)
+
+**Vercel Pro:** `vercel.json` runs 8x8 sync every 5 minutes. Set `CRON_SECRET` in Vercel env vars.
+
+**Vercel Hobby:** Cron cannot run more than once per day — empty `crons` in `vercel.json` and use **Supabase `pg_cron`** instead ([supabase/README.md](./supabase/README.md)).
+
+See [docs/HETZNER-DEPLOY.md](./docs/HETZNER-DEPLOY.md) for VPS alternative.
+
 ## Build phases
 
 | Phase | Status |

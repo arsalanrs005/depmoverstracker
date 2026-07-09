@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { CommandHeader } from '@/components/CommandHeader';
 import { DISPOSITION_OPTIONS } from '@/lib/cdr-parser';
 import { TRACK_LABELS, TRACK_TAB_LABELS, type CallTrack } from '@/lib/tracks';
 import { X8X_DISPOSITION_TRACKS, teamForTrack, type X8xDispositionTrack } from '@/lib/track-filters';
@@ -104,15 +105,13 @@ export default function AgentDispositionsPage() {
 
   return (
     <>
-      <header className="page-header">
-        <h1 className="page-title">Manager Dispositions</h1>
-        <p className="page-subtitle">
-          8x8 closers, Verification, and Customer Success — manager logs outcomes here.
-          Aloware closers dispose in Aloware (tracked automatically on the dashboard).
-        </p>
-      </header>
+      <CommandHeader
+        title="Dispositions"
+        subtitle="8x8 closers, Verification, and Customer Success — manager logs outcomes here. Aloware closers dispose in Aloware."
+      />
 
-      <div className="pill-tabs pill-tabs--wide" style={{ marginBottom: '1rem' }}>
+      <div className="scc-content">
+      <div className="scc-pill-tabs" style={{ marginBottom: '1rem' }}>
         {DISPOSITION_TRACKS.map((tr) => (
           <button
             key={tr}
@@ -268,6 +267,7 @@ export default function AgentDispositionsPage() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </>
   );

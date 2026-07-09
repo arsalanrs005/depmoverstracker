@@ -1,4 +1,5 @@
 import { listRecentCalls } from '@/lib/db';
+import { CommandHeader } from '@/components/CommandHeader';
 import { TRACK_LABELS, type CallTrack } from '@/lib/tracks';
 
 export const dynamic = 'force-dynamic';
@@ -33,13 +34,12 @@ export default async function CallsPage() {
 
   return (
     <>
-      <header className="page-header">
-        <h1 className="page-title">Recent Calls</h1>
-        <p className="page-subtitle">
-          {calls.length} calls — Aloware closers, 8x8 (sync every 5 min), Retell AI.
-        </p>
-      </header>
+      <CommandHeader
+        title="Call Activity Dashboard"
+        subtitle={`${calls.length} recent calls — Aloware closers, 8x8 (sync every 5 min), Retell AI.`}
+      />
 
+      <div className="scc-content">
       {error && (
         <div className="card card-error">
           Database not connected. Set DATABASE_URL and run <code>npm run db:push</code>.
@@ -93,6 +93,7 @@ export default async function CallsPage() {
           </table>
         </div>
       )}
+      </div>
     </>
   );
 }
