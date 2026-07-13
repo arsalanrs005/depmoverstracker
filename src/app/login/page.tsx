@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 
@@ -35,16 +36,29 @@ function LoginForm() {
 
   return (
     <div className="auth-page">
-      <div className="auth-card">
-        <div className="auth-brand">
-          <span className="scc-brand-icon">DM</span>
-          <div>
-            <h1>Sales Command Center</h1>
-            <p>Dependable Movers · Call Tracker</p>
-          </div>
-        </div>
+      <div className="auth-atmosphere" aria-hidden="true">
+        <div className="auth-glow auth-glow--a" />
+        <div className="auth-glow auth-glow--b" />
+        <div className="auth-grid" />
+      </div>
+
+      <div className="auth-panel">
+        <header className="auth-brand">
+          <Image
+            src="/depmoverslogo.png"
+            alt="Dependable Movers"
+            width={280}
+            height={280}
+            priority
+            className="auth-logo"
+          />
+          <p className="auth-tagline">Call Command Center</p>
+        </header>
 
         <form onSubmit={handleSubmit} className="auth-form">
+          <h1 className="auth-heading">Sign in</h1>
+          <p className="auth-sub">Access your team workspace with your work email.</p>
+
           <div className="form-group">
             <label htmlFor="email">Work email</label>
             <input
@@ -54,7 +68,7 @@ function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@moverpilot.ai"
+              placeholder="you@dependablemovers.com"
             />
           </div>
           <div className="form-group">
@@ -66,10 +80,11 @@ function LoginForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
             />
           </div>
 
-          {error && <div className="auth-error">{error}</div>}
+          {error && <div className="auth-error" role="alert">{error}</div>}
 
           <button type="submit" className="auth-submit" disabled={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
@@ -77,9 +92,7 @@ function LoginForm() {
         </form>
 
         <p className="auth-foot">
-          <strong>Admin</strong> — dashboards and reports.
-          <br />
-          <strong>Executive</strong> — quote entry and dispositions.
+          Authorized Dependable Movers staff only
         </p>
       </div>
     </div>
@@ -88,7 +101,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="auth-page"><p className="loading-pulse">Loading…</p></div>}>
+    <Suspense
+      fallback={
+        <div className="auth-page">
+          <p className="auth-loading">Loading…</p>
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
