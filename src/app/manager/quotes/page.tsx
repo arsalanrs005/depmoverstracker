@@ -12,6 +12,7 @@ import {
 } from '@/components/QuoteCharts';
 import type { QuoteTrackingPayload } from '@/lib/quote-tracking';
 import { TRACK_TAB_LABELS } from '@/lib/tracks';
+import type { UserRole } from '@/lib/auth-types';
 
 type Period = 'day' | 'week' | 'month';
 type TrackFilter = 'all' | 'aloware_closer' | '8x8_closer';
@@ -22,8 +23,20 @@ function QuotesInner() {
   const [data, setData] = useState<QuoteTrackingPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setRole(data?.user?.role ?? null))
+      .catch(() => setRole(null));
+  }, []);
+
+  const isAdmin = role === 'admin';
+  const isExecutive = role === 'executive';
 
   const load = useCallback(async () => {
+    if (!isAdmin) return;
     setLoading(true);
     setError(null);
     try {
@@ -37,21 +50,39 @@ function QuotesInner() {
     } finally {
       setLoading(false);
     }
-  }, [period, track]);
+  }, [period, track, isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
     load();
     const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, isAdmin]);
 
   const monthMax = Math.max(...(data?.monthlyQuoteValue.map((m) => m.value) ?? [1]), 1);
+
+  if (isExecutive) {
+    return (
+      <>
+        <CommandHeader
+          title="Quote Entry"
+          subtitle="Enter job value and move details for quoted and booked Aloware calls."
+        />
+        <div className="scc-content">
+          <AlowareQuoteEntry />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <CommandHeader
         title="Quote Tracking Dashboard"
-        subtitle="Quotes sent, deposits, and agent performance — managers enter Aloware job value at booking time."
+        subtitle="Quotes sent, deposits, and agent performance."
         filters={
           <>
             <FilterSelect
@@ -121,8 +152,6 @@ function QuotesInner() {
             </p>
           </>
         )}
-
-        {!loading && <AlowareQuoteEntry onSaved={load} />}
       </div>
     </>
   );

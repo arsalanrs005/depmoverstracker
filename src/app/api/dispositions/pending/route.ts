@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
 import { listPendingDispositions } from '@/lib/db';
 import { isValidTrack, type CallTrack } from '@/lib/tracks';
 
@@ -6,6 +7,10 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  const user = await getServerSession();
+  if (!user || user.role !== 'executive') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   try {
     const { searchParams } = new URL(request.url);
     const agentId = searchParams.get('agent_id_8x8') ?? undefined;

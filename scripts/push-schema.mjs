@@ -22,7 +22,9 @@ const schemaPath = path.join(process.cwd(), 'db', 'schema.sql');
 const migration002 = path.join(process.cwd(), 'db', 'migration-002-tracks.sql');
 const migration003 = path.join(process.cwd(), 'db', 'migration-003-agents-unique.sql');
 const migration004 = path.join(process.cwd(), 'db', 'migration-004-quote-details.sql');
+const migration005 = path.join(process.cwd(), 'db', 'migration-005-app-users.sql');
 const seedPath = path.join(process.cwd(), 'db', 'seed-agents.sql');
+const seedUsersPath = path.join(process.cwd(), 'db', 'seed-app-users.sql');
 const sqlText = fs.readFileSync(schemaPath, 'utf8');
 
 const db = postgres(url, { max: 1 });
@@ -40,9 +42,14 @@ async function main() {
   await applyFile('Migration', migration002);
   await applyFile('Migration', migration003);
   await applyFile('Migration', migration004);
+  await applyFile('Migration', migration005);
   if (fs.existsSync(seedPath)) {
     await db.unsafe(fs.readFileSync(seedPath, 'utf8'));
     console.log('Seed applied:', seedPath);
+  }
+  if (fs.existsSync(seedUsersPath)) {
+    await db.unsafe(fs.readFileSync(seedUsersPath, 'utf8'));
+    console.log('Seed applied:', seedUsersPath);
   }
   await db.end();
 }

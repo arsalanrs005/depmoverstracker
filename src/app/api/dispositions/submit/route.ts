@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
 import { DISPOSITION_OPTIONS } from '@/lib/cdr-parser';
 import { submitDisposition } from '@/lib/db';
 import { syncDispositionToGhl } from '@/lib/ghl-lookup';
@@ -7,6 +8,10 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
+  const user = await getServerSession();
+  if (!user || user.role !== 'executive') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const { callId, dispositionCode, notes, callbackAt } = body;

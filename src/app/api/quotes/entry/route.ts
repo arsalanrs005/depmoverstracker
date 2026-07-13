@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/auth';
 import { listQuoteEntryCalls, updateQuoteDetails } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET() {
+  const user = await getServerSession();
+  if (!user || user.role !== 'executive') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   try {
     const calls = await listQuoteEntryCalls(100);
     return NextResponse.json({ calls });
@@ -14,6 +19,10 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const user = await getServerSession();
+  if (!user || user.role !== 'executive') {
+    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
   try {
     const body = await request.json();
     const callId = String(body.callId ?? '');
@@ -34,7 +43,7 @@ export async function PATCH(request: Request) {
       moveDate: body.moveDate || null,
       originCity: body.originCity || null,
       destinationCity: body.destinationCity || null,
-      enteredBy: body.enteredBy || 'manager',
+      enteredBy: body.enteredBy || user.email,
     });
 
     if (!updated) {
