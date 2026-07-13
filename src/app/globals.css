@@ -1866,3 +1866,220 @@ tr.row-needs-value td {
   color: #fff;
   text-decoration: underline;
 }
+
+/* —— After Hour Inventory Intake —— */
+.intake-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.btn-secondary {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--white);
+  color: var(--blue-900);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--blue-200);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.empty-state-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.empty-state-hint code {
+  font-size: 0.8rem;
+  background: var(--cream-dark);
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+}
+
+.intake-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.intake-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.intake-card.open {
+  border-color: var(--blue-200);
+  box-shadow: var(--shadow-md);
+}
+
+.intake-card-header {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+}
+
+.intake-card-header:hover {
+  background: linear-gradient(135deg, var(--white), var(--blue-50));
+}
+
+.intake-card-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--blue-900);
+}
+
+.intake-card-meta {
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.intake-card-side {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.intake-chevron {
+  color: var(--blue-600);
+  font-size: 0.95rem;
+  min-width: 1rem;
+  text-align: center;
+}
+
+.intake-card-body {
+  padding: 0 1.25rem 1.35rem;
+  border-top: 1px solid var(--border);
+  animation: auth-rise 0.35s ease both;
+}
+
+.intake-section {
+  margin-top: 1.15rem;
+}
+
+.intake-section h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue-700);
+}
+
+.intake-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.intake-field dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.15rem;
+}
+
+.intake-field dd {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.intake-prose {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.intake-recording {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.intake-recording audio {
+  width: 100%;
+  max-width: 480px;
+}
+
+.intake-link {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.intake-transcript {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  background: #0b1f3a;
+  color: #e8eef7;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.mini-tag.outcome-intake-complete {
+  background: var(--good-bg);
+  color: var(--good);
+}
+
+.mini-tag.outcome-partial,
+.mini-tag.outcome-incomplete {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+@media (max-width: 700px) {
+  .intake-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .intake-card-header {
+    flex-direction: column;
+  }
+
+  .intake-card-side {
+    justify-content: flex-start;
+  }
+}

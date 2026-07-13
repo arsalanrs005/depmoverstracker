@@ -12,6 +12,7 @@ const ADMIN_NAV = [
   { href: '/manager/scoreboard', label: 'Daily Scoreboard', icon: '▦' },
   { href: '/calls', label: 'Call Activity', icon: '☎' },
   { href: '/manager/quotes', label: 'Quote Tracking', icon: '◎' },
+  { href: '/manager/inventory-intake', label: 'After Hour Inventory', icon: '☰' },
   { href: '/manager/accountability', label: 'Accountability', icon: '⚑' },
   { href: '/manager/leaderboard', label: 'Leaderboard', icon: '★' },
 ];
@@ -19,6 +20,7 @@ const ADMIN_NAV = [
 const EXECUTIVE_NAV = [
   { href: '/agent/dispositions', label: 'Dispositions', icon: '✎' },
   { href: '/manager/quotes', label: 'Quote Entry', icon: '◎' },
+  { href: '/manager/inventory-intake', label: 'After Hour Inventory', icon: '☰' },
 ];
 
 function isActive(pathname: string, _searchParams: URLSearchParams, href: string) {

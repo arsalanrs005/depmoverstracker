@@ -1032,3 +1032,82 @@ export async function updateQuoteDetails(params: {
   `;
   return rows[0] ?? null;
 }
+
+export async function upsertInventoryIntake(parsed: import('./inventory-intake').ParsedInventoryIntake) {
+  const db = getDb();
+
+  if (parsed.retellCallId) {
+    const existing = await db`
+      SELECT id FROM inventory_intakes WHERE retell_call_id = ${parsed.retellCallId} LIMIT 1
+    `;
+    if (existing[0]) {
+      const rows = await db`
+        UPDATE inventory_intakes SET
+          contact_id = ${parsed.contactId},
+          opportunity_id = ${parsed.opportunityId},
+          lead_name = ${parsed.leadName},
+          transcript = ${parsed.transcript},
+          recording_url = ${parsed.recordingUrl},
+          call_summary = ${parsed.callSummary},
+          outcome = ${parsed.outcome},
+          callback_confirmed = ${parsed.callbackConfirmed},
+          move_date = ${parsed.moveDate},
+          move_type = ${parsed.moveType},
+          home_size = ${parsed.homeSize},
+          bedroom_contents = ${parsed.bedroomContents},
+          living_room_contents = ${parsed.livingRoomContents},
+          dining_room_contents = ${parsed.diningRoomContents},
+          kitchen_contents = ${parsed.kitchenContents},
+          office_contents = ${parsed.officeContents},
+          garage_outdoor_contents = ${parsed.garageOutdoorContents},
+          special_items = ${parsed.specialItems},
+          box_count_estimate = ${parsed.boxCountEstimate},
+          storage_needed = ${parsed.storageNeeded},
+          pickup_address = ${parsed.pickupAddress},
+          dropoff_address = ${parsed.dropoffAddress},
+          access_notes = ${parsed.accessNotes},
+          lead_sentiment = ${parsed.leadSentiment},
+          raw_payload = ${db.json(parsed.raw as never)},
+          updated_at = now()
+        WHERE retell_call_id = ${parsed.retellCallId}
+        RETURNING *
+      `;
+      return { row: rows[0], created: false };
+    }
+  }
+
+  const rows = await db`
+    INSERT INTO inventory_intakes (
+      retell_call_id, contact_id, opportunity_id, lead_name,
+      transcript, recording_url, call_summary, outcome, callback_confirmed,
+      move_date, move_type, home_size,
+      bedroom_contents, living_room_contents, dining_room_contents, kitchen_contents,
+      office_contents, garage_outdoor_contents, special_items,
+      box_count_estimate, storage_needed, pickup_address, dropoff_address,
+      access_notes, lead_sentiment, raw_payload
+    ) VALUES (
+      ${parsed.retellCallId}, ${parsed.contactId}, ${parsed.opportunityId}, ${parsed.leadName},
+      ${parsed.transcript}, ${parsed.recordingUrl}, ${parsed.callSummary}, ${parsed.outcome},
+      ${parsed.callbackConfirmed},
+      ${parsed.moveDate}, ${parsed.moveType}, ${parsed.homeSize},
+      ${parsed.bedroomContents}, ${parsed.livingRoomContents}, ${parsed.diningRoomContents},
+      ${parsed.kitchenContents},
+      ${parsed.officeContents}, ${parsed.garageOutdoorContents}, ${parsed.specialItems},
+      ${parsed.boxCountEstimate}, ${parsed.storageNeeded}, ${parsed.pickupAddress},
+      ${parsed.dropoffAddress},
+      ${parsed.accessNotes}, ${parsed.leadSentiment}, ${db.json(parsed.raw as never)}
+    )
+    RETURNING *
+  `;
+  return { row: rows[0], created: true };
+}
+
+export async function listInventoryIntakes(limit = 100) {
+  const db = getDb();
+  const safeLimit = Math.min(Math.max(limit, 1), 500);
+  return db`
+    SELECT * FROM inventory_intakes
+    ORDER BY created_at DESC
+    LIMIT ${safeLimit}
+  `;
+}

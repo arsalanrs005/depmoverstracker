@@ -37,8 +37,10 @@ export function getSessionCookieName() {
 const EXECUTIVE_PREFIXES = [
   '/agent/dispositions',
   '/manager/quotes',
+  '/manager/inventory-intake',
   '/api/dispositions/',
   '/api/quotes/entry',
+  '/api/inventory-intakes',
   '/api/agents',
 ];
 
