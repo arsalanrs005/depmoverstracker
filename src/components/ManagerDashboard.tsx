@@ -72,6 +72,8 @@ export function AgentTable({
             <th>Inbound ans.</th>
             <th>Outbound</th>
             <th>Quoted</th>
+            {isAlo && <th>Deposit pending</th>}
+            {isAlo && <th>Deposit collected</th>}
             {!isAlo && <th>Pending</th>}
           </tr>
         </thead>
@@ -87,6 +89,8 @@ export function AgentTable({
               <td>{String(a.inbound_answered ?? a.answered ?? 0)}</td>
               <td>{String(a.outbound ?? 0)}</td>
               <td>{String(a.outcome_good ?? 0)}</td>
+              {isAlo && <td>{String(a.booked_pending ?? 0)}</td>}
+              {isAlo && <td>{String(a.booked_collected ?? 0)}</td>}
               {!isAlo && (
                 <td>
                   {Number(a.pending) > 0 ? (
@@ -215,6 +219,10 @@ export function emptyTrackKpi(track: CallTrack): TrackKpiRow {
     outcome_bad: 0,
     outcome_neutral: 0,
     inbound_answer_rate: null,
+    disposition_counts: {},
+    quoted_count: 0,
+    booked_pending_count: 0,
+    booked_collected_count: 0,
   };
 }
 

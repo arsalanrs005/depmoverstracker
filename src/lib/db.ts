@@ -481,7 +481,19 @@ export async function getDashboardStats(period: DashboardPeriod = 'day', trackFi
       COUNT(*) FILTER (WHERE cs.disposition_code IS NOT NULL) AS dispositions_submitted,
       COUNT(*) FILTER (WHERE cs.call_outcome = 'good') AS outcome_good,
       COUNT(*) FILTER (WHERE cs.call_outcome = 'bad') AS outcome_bad,
-      COUNT(*) FILTER (WHERE cs.call_outcome = 'neutral') AS outcome_neutral
+      COUNT(*) FILTER (WHERE cs.call_outcome = 'neutral') AS outcome_neutral,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('quoted', 'connected-quoted')
+          OR cs.quote_type = 'quoted'
+      ) AS quoted_count,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code = 'booked-deposit-pending'
+          OR cs.quote_type = 'booked_pending'
+      ) AS booked_pending_count,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('booked-deposit-collected', 'closed-deal')
+          OR cs.quote_type = 'booked'
+      ) AS booked_collected_count
     FROM call_sessions cs
     WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
       AND (
@@ -506,8 +518,29 @@ export async function getDashboardStats(period: DashboardPeriod = 'day', trackFi
     GROUP BY cs.track
     ORDER BY total_calls DESC
   `;
-  const trackKpis: TrackKpiRow[] = trackKpiRows.map((row) =>
+  let trackKpis: TrackKpiRow[] = trackKpiRows.map((row) =>
     normalizeTrackKpiRow(row as Record<string, unknown>)
+  );
+
+  // Full Aloware disposition breakdown for status KPI boxes
+  const aloDispRows = await db`
+    SELECT disposition_code, COUNT(*)::int AS cnt
+    FROM call_sessions
+    WHERE track = 'aloware_closer'
+      AND source IN ('aloware_inbound', 'aloware_outbound')
+      AND COALESCE(started_at, created_at) >= now() - ${interval}::interval
+      AND disposition_code IS NOT NULL
+      AND (aloware_user_id IS NULL OR aloware_user_id IN (
+        SELECT agent_id_aloware FROM agents WHERE platform = 'aloware' AND team = 'inbound_closers'
+      ))
+    GROUP BY disposition_code
+  `;
+  const dispositionCounts: Record<string, number> = {};
+  for (const r of aloDispRows) {
+    if (r.disposition_code) dispositionCounts[String(r.disposition_code)] = Number(r.cnt) || 0;
+  }
+  trackKpis = trackKpis.map((k) =>
+    k.track === 'aloware_closer' ? { ...k, disposition_counts: dispositionCounts } : k
   );
 
   const kpiForTrack = track ? trackKpis.find((k) => k.track === track) ?? null : null;
@@ -584,7 +617,16 @@ export async function getDashboardStats(period: DashboardPeriod = 'day', trackFi
       COUNT(*) FILTER (WHERE cs.cdr_answered = 'Answered' OR cs.disposition_code IS NOT NULL) AS answered,
       COUNT(*) FILTER (WHERE cs.disposition_code IS NOT NULL) AS disposed,
       COUNT(*) FILTER (WHERE cs.needs_disposition = true AND cs.disposition_code IS NULL) AS pending,
-      COUNT(*) FILTER (WHERE cs.call_outcome = 'good') AS outcome_good
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('quoted', 'connected-quoted') OR cs.quote_type = 'quoted'
+      ) AS outcome_good,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code = 'booked-deposit-pending' OR cs.quote_type = 'booked_pending'
+      ) AS booked_pending,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('booked-deposit-collected', 'closed-deal')
+          OR cs.quote_type = 'booked'
+      ) AS booked_collected
     FROM call_sessions cs
     INNER JOIN agents ag ON ag.agent_id_aloware = cs.aloware_user_id
       AND ag.platform = 'aloware' AND ag.team = 'inbound_closers'
