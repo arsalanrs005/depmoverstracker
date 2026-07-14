@@ -3,6 +3,8 @@ import type { DashboardPeriod } from './db';
 export type QuoteAgentRow = {
   agent_name: string;
   quotes_sent: number;
+  call_quotes?: number;
+  email_quotes?: number;
   deposits_pending?: number;
   deposits_collected: number;
   revenue: number;
@@ -18,6 +20,8 @@ export type QuoteTrackingPayload = {
   period: DashboardPeriod;
   trackFilter: string | null;
   summary: {
+    call_quotes: number;
+    email_quotes: number;
     quotes_sent: number;
     total_quote_value: number;
     deposits_pending: number;
@@ -33,15 +37,23 @@ export type QuoteTrackingPayload = {
 };
 
 export function formatCurrency(n: number): string {
-  if (n <= 0) return '$0';
+  if (!Number.isFinite(n) || n <= 0) return '$0.00';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(n);
 }
 
 export function formatPct(n: number | null): string {
-  if (n == null) return '—';
-  return `${n.toFixed(2)}%`;
+  if (n == null || !Number.isFinite(n)) return '—';
+  const capped = Math.min(Math.max(n, 0), 100);
+  return `${capped.toFixed(2)}%`;
+}
+
+export function formatCount(n: number): string {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+  }).format(n);
 }

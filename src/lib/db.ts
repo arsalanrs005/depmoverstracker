@@ -850,15 +850,19 @@ export async function getQuoteTrackingStats(
   const totalQuoteValueCents = Number(summaryRow?.total_quote_value_cents ?? 0);
   const revenueCents = Number(summaryRow?.revenue_cents ?? 0);
   const quotesWithValue = Number(summaryRow?.quotes_with_value ?? 0);
-  const depositsFromCallsOrEvents =
-    bookedCount > 0 ? bookedCount : Number(depositRow?.deposits_collected ?? 0);
+  const alowareCallQuotes = Number(summaryRow?.quotes_sent ?? 0);
+  const alowareDeposits = bookedCount > 0 ? bookedCount : Number(depositRow?.deposits_collected ?? 0);
 
   const manualTotals = await sumManualQuoteTotals(period);
-  const quotesSent = Number(summaryRow?.quotes_sent ?? 0) + manualTotals.quotes;
-  const depositsCollected = depositsFromCallsOrEvents + manualTotals.deposits;
+  const callQuotes = alowareCallQuotes + manualTotals.quotesCall;
+  const emailQuotes = manualTotals.quotesEmail;
+  const quotesSent = callQuotes + emailQuotes;
+  const depositsCollected = alowareDeposits + manualTotals.deposits;
   const depositsPending = depositPendingCount;
   const quoteToDepositPct =
-    quotesSent > 0 ? Math.round((depositsCollected / quotesSent) * 10000) / 100 : null;
+    quotesSent > 0
+      ? Math.min(100, Math.round((depositsCollected / quotesSent) * 10000) / 100)
+      : null;
   const avgQuoteValueCents =
     quotesWithValue > 0 ? Math.round(totalQuoteValueCents / quotesWithValue) : null;
 
@@ -942,9 +946,12 @@ export async function getQuoteTrackingStats(
     const booked = Number(r.deposits_booked ?? 0);
     const pending = Number(r.deposits_pending ?? 0);
     const fromEvents = depositMap.get(name) ?? 0;
+    const callQ = Number(r.quotes_sent);
     return {
       agent_name: name,
-      quotes_sent: Number(r.quotes_sent),
+      call_quotes: callQ,
+      email_quotes: 0,
+      quotes_sent: callQ,
       deposits_pending: pending,
       deposits_collected: booked > 0 ? booked : fromEvents,
       revenue: Math.round(Number(r.revenue_cents ?? 0) / 100),
@@ -955,6 +962,8 @@ export async function getQuoteTrackingStats(
     if (!byAgent.some((a) => a.agent_name === name)) {
       byAgent.push({
         agent_name: name,
+        call_quotes: 0,
+        email_quotes: 0,
         quotes_sent: 0,
         deposits_pending: 0,
         deposits_collected: deposits,
@@ -967,12 +976,16 @@ export async function getQuoteTrackingStats(
   for (const row of manualByAgent) {
     const existing = byAgent.find((a) => a.agent_name === row.agent_name);
     if (existing) {
-      existing.quotes_sent += row.quotes;
+      existing.call_quotes = (existing.call_quotes ?? 0) + row.quotesCall;
+      existing.email_quotes = (existing.email_quotes ?? 0) + row.quotesEmail;
+      existing.quotes_sent += row.quotesCall + row.quotesEmail;
       existing.deposits_collected += row.deposits;
     } else {
       byAgent.push({
         agent_name: row.agent_name,
-        quotes_sent: row.quotes,
+        call_quotes: row.quotesCall,
+        email_quotes: row.quotesEmail,
+        quotes_sent: row.quotesCall + row.quotesEmail,
         deposits_pending: 0,
         deposits_collected: row.deposits,
         revenue: 0,
@@ -1002,19 +1015,21 @@ export async function getQuoteTrackingStats(
     period,
     trackFilter: track,
     summary: {
+      call_quotes: callQuotes,
+      email_quotes: emailQuotes,
       quotes_sent: quotesSent,
-      total_quote_value: Math.round(totalQuoteValueCents / 100),
+      total_quote_value: Math.round(totalQuoteValueCents) / 100,
       deposits_pending: depositsPending,
       deposits_collected: depositsCollected,
-      revenue_generated: Math.round(revenueCents / 100),
+      revenue_generated: Math.round(revenueCents) / 100,
       quote_to_deposit_pct: quoteToDepositPct,
-      avg_quote_value: avgQuoteValueCents != null ? Math.round(avgQuoteValueCents / 100) : null,
+      avg_quote_value: avgQuoteValueCents != null ? Math.round(avgQuoteValueCents) / 100 : null,
     },
     dailyTrend,
     monthlyQuoteValue: [{ label: monthLabel, value: quotesSent }],
     byAgent,
     dataNote:
-      'Quote Tracking uses Aloware dispositions Quoted, Booked - Deposit Pending, and Booked - Deposit Collected (plus Granot manual entries).',
+      'Call Quote = Aloware “Quoted” + Granot call. Email Quote = Granot email. Deposit Collected = Aloware “Booked - Deposit Collected” + Granot deposits.',
   } satisfies QuoteTrackingPayload;
 }
 
@@ -1025,6 +1040,7 @@ export type QuoteEntryCall = {
   agent_name: string | null;
   started_at: Date | null;
   disposition_code: string | null;
+  wrap_up_code: string | null;
   call_outcome: string;
   quote_type: string | null;
   job_value_cents: number | null;
@@ -1034,7 +1050,8 @@ export type QuoteEntryCall = {
   quote_details_at: Date | null;
 };
 
-export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]> {
+/** Aloware tracker — disposed closer calls with exact Aloware statuses. */
+export async function listQuoteEntryCalls(limit = 150): Promise<QuoteEntryCall[]> {
   const db = getDb();
   const rows = await db`
     SELECT
@@ -1044,6 +1061,7 @@ export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]
       COALESCE(ag.name, cs.aloware_user_name, cs.agent_name) AS agent_name,
       cs.started_at,
       cs.disposition_code,
+      cs.wrap_up_code,
       cs.call_outcome,
       cs.quote_type,
       cs.job_value_cents,
@@ -1056,13 +1074,19 @@ export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]
     WHERE cs.track = 'aloware_closer'
       AND cs.source IN ('aloware_inbound', 'aloware_outbound')
       AND (
-        cs.disposition_code IN (
+        cs.disposition_code IS NOT NULL
+        OR cs.wrap_up_code IS NOT NULL
+        OR cs.quote_type IS NOT NULL
+      )
+    ORDER BY
+      CASE
+        WHEN cs.disposition_code IN (
           'quoted', 'connected-quoted',
           'booked-deposit-pending', 'booked-deposit-collected', 'closed-deal'
         )
         OR cs.quote_type IN ('quoted', 'booked_pending', 'booked')
-      )
-    ORDER BY
+        THEN 0 ELSE 1
+      END,
       (cs.job_value_cents IS NULL) DESC,
       COALESCE(cs.started_at, cs.created_at) DESC
     LIMIT ${limit}
@@ -1074,6 +1098,7 @@ export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]
     agent_name: r.agent_name != null ? String(r.agent_name) : null,
     started_at: r.started_at as Date | null,
     disposition_code: r.disposition_code != null ? String(r.disposition_code) : null,
+    wrap_up_code: r.wrap_up_code != null ? String(r.wrap_up_code) : null,
     call_outcome: String(r.call_outcome),
     quote_type: r.quote_type != null ? String(r.quote_type) : null,
     job_value_cents: r.job_value_cents != null ? Number(r.job_value_cents) : null,
@@ -1305,7 +1330,8 @@ async function sumManualQuoteTotals(period: DashboardPeriod) {
   const today = todayEtYmd();
   const [row] = await db`
     SELECT
-      COALESCE(SUM(quotes_call + quotes_email), 0)::int AS quotes,
+      COALESCE(SUM(quotes_call), 0)::int AS quotes_call,
+      COALESCE(SUM(quotes_email), 0)::int AS quotes_email,
       COALESCE(SUM(deposits_collected), 0)::int AS deposits
     FROM agent_quote_manual
     WHERE period_start >= ${cutoff}::date
@@ -1316,7 +1342,8 @@ async function sumManualQuoteTotals(period: DashboardPeriod) {
       )
   `;
   return {
-    quotes: Number(row?.quotes ?? 0),
+    quotesCall: Number(row?.quotes_call ?? 0),
+    quotesEmail: Number(row?.quotes_email ?? 0),
     deposits: Number(row?.deposits ?? 0),
   };
 }
@@ -1328,7 +1355,8 @@ async function listManualQuoteTotalsByAgent(period: DashboardPeriod) {
   const rows = await db`
     SELECT
       ag.name AS agent_name,
-      COALESCE(SUM(m.quotes_call + m.quotes_email), 0)::int AS quotes,
+      COALESCE(SUM(m.quotes_call), 0)::int AS quotes_call,
+      COALESCE(SUM(m.quotes_email), 0)::int AS quotes_email,
       COALESCE(SUM(m.deposits_collected), 0)::int AS deposits
     FROM agent_quote_manual m
     INNER JOIN agents ag ON ag.id = m.agent_id
@@ -1338,7 +1366,8 @@ async function listManualQuoteTotalsByAgent(period: DashboardPeriod) {
   `;
   return rows.map((r) => ({
     agent_name: String(r.agent_name),
-    quotes: Number(r.quotes),
+    quotesCall: Number(r.quotes_call),
+    quotesEmail: Number(r.quotes_email),
     deposits: Number(r.deposits),
   }));
 }

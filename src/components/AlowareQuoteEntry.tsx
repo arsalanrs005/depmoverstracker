@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ALOWARE_DISPOSITIONS, getAlowareDispositionByCode } from '@/lib/aloware-dispositions';
 import { formatCurrency } from '@/lib/quote-tracking';
 
 type QuoteCall = {
@@ -10,6 +11,7 @@ type QuoteCall = {
   agent_name: string | null;
   started_at: string | null;
   disposition_code: string | null;
+  wrap_up_code: string | null;
   call_outcome: string;
   quote_type: string | null;
   job_value_cents: number | null;
@@ -18,14 +20,62 @@ type QuoteCall = {
   destination_city: string | null;
 };
 
+type StatusFilter = 'all' | 'quote_track' | string;
+
 function fmtWhen(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York' });
 }
 
+function statusLabel(c: QuoteCall): string {
+  if (c.wrap_up_code && /[A-Za-z]/.test(c.wrap_up_code) && c.wrap_up_code.includes(' ')) {
+    return c.wrap_up_code;
+  }
+  const mapped = getAlowareDispositionByCode(c.disposition_code);
+  if (mapped) return mapped.label;
+  if (c.quote_type === 'booked') return 'Booked - Deposit Collected';
+  if (c.quote_type === 'booked_pending') return 'Booked - Deposit Pending';
+  if (c.quote_type === 'quoted') return 'Quoted';
+  return c.disposition_code?.replace(/-/g, ' ') || c.wrap_up_code || 'Unknown';
+}
+
+function isQuoteTrack(c: QuoteCall): boolean {
+  return (
+    c.disposition_code === 'quoted' ||
+    c.disposition_code === 'connected-quoted' ||
+    c.disposition_code === 'booked-deposit-pending' ||
+    c.disposition_code === 'booked-deposit-collected' ||
+    c.disposition_code === 'closed-deal' ||
+    c.quote_type === 'quoted' ||
+    c.quote_type === 'booked_pending' ||
+    c.quote_type === 'booked'
+  );
+}
+
+function statusTone(c: QuoteCall): string {
+  if (
+    c.quote_type === 'booked' ||
+    c.disposition_code === 'booked-deposit-collected' ||
+    c.disposition_code === 'closed-deal'
+  ) {
+    return 'good';
+  }
+  if (c.quote_type === 'booked_pending' || c.disposition_code === 'booked-deposit-pending') {
+    return 'pending';
+  }
+  if (c.disposition_code === 'quoted' || c.disposition_code === 'connected-quoted' || c.quote_type === 'quoted') {
+    return '';
+  }
+  const mapped = getAlowareDispositionByCode(c.disposition_code);
+  if (mapped?.outcome === 'bad') return 'bad';
+  if (mapped?.outcome === 'good') return 'good';
+  return 'neutral';
+}
+
 export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
   const [calls, setCalls] = useState<QuoteCall[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<StatusFilter>('all');
   const [selected, setSelected] = useState<QuoteCall | null>(null);
   const [quoteType, setQuoteType] = useState<'quoted' | 'booked_pending' | 'booked'>('quoted');
   const [jobValue, setJobValue] = useState('');
@@ -53,16 +103,31 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
     load();
   }, [load]);
 
+  const statusCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of calls) {
+      const label = statusLabel(c);
+      map.set(label, (map.get(label) ?? 0) + 1);
+    }
+    return [...map.entries()].sort((a, b) => b[1] - a[1]);
+  }, [calls]);
+
+  const visible = useMemo(() => {
+    if (filter === 'all') return calls;
+    if (filter === 'quote_track') return calls.filter(isQuoteTrack);
+    return calls.filter((c) => statusLabel(c) === filter);
+  }, [calls, filter]);
+
   function openForm(c: QuoteCall) {
     setSelected(c);
     setQuoteType(
-      c.quote_type === 'booked'
+      c.quote_type === 'booked' || c.disposition_code === 'booked-deposit-collected'
         ? 'booked'
-        : c.quote_type === 'booked_pending'
+        : c.quote_type === 'booked_pending' || c.disposition_code === 'booked-deposit-pending'
           ? 'booked_pending'
           : 'quoted'
     );
-    setJobValue(c.job_value_cents ? String(c.job_value_cents / 100) : '');
+    setJobValue(c.job_value_cents != null ? String(c.job_value_cents / 100) : '');
     setMoveDate(c.move_date ?? '');
     setOriginCity(c.origin_city ?? '');
     setDestinationCity(c.destination_city ?? '');
@@ -100,71 +165,115 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
     }
   }
 
-  const needsEntry = calls.filter((c) => !c.job_value_cents).length;
+  const quoteTrackCount = calls.filter(isQuoteTrack).length;
+  const needsValue = calls.filter((c) => isQuoteTrack(c) && !c.job_value_cents).length;
 
   return (
-    <section className="quote-entry-section">
-      <h2 className="section-title">
-        Enter job value for Quoted / Booked calls
-        {needsEntry > 0 && <span className="badge pending" style={{ marginLeft: '0.5rem' }}>{needsEntry} need value</span>}
-      </h2>
-      <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
-        Aloware dispositions feed this list: Quoted, Booked - Deposit Pending, Booked - Deposit Collected.
-        Add job value here when needed.
-      </p>
+    <section className="quote-entry-section aloware-tracker">
+      <div className="aloware-tracker-head">
+        <div>
+          <h2 className="section-title">Aloware tracker</h2>
+          <p className="aloware-tracker-sub">
+            Live Aloware dispositions from the webhook — Exact status names. Quote-track rows can get a job value.
+          </p>
+        </div>
+        <p className="aloware-tracker-meta">
+          {calls.length} calls · {quoteTrackCount} quote-track
+          {needsValue > 0 ? ` · ${needsValue} need value` : ''}
+        </p>
+      </div>
+
+      <div className="aloware-status-bar">
+        <button
+          type="button"
+          className={filter === 'all' ? 'active' : ''}
+          onClick={() => setFilter('all')}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={filter === 'quote_track' ? 'active' : ''}
+          onClick={() => setFilter('quote_track')}
+        >
+          Quote track
+        </button>
+        {ALOWARE_DISPOSITIONS.map((d) => {
+          const count = statusCounts.find(([label]) => label === d.label)?.[1] ?? 0;
+          return (
+            <button
+              key={d.code}
+              type="button"
+              className={filter === d.label ? 'active' : ''}
+              onClick={() => setFilter(d.label)}
+            >
+              {d.label}
+              {count > 0 ? <span>{count}</span> : null}
+            </button>
+          );
+        })}
+      </div>
 
       {message && (
-        <div className={`card ${message.startsWith('Error') || message.includes('error') ? 'card-error' : 'card-success'}`} style={{ marginBottom: '1rem' }}>
+        <div
+          className={`card ${
+            message.startsWith('Error') || message.includes('error') ? 'card-error' : 'card-success'
+          }`}
+          style={{ marginBottom: '1rem' }}
+        >
           {message}
         </div>
       )}
 
       <div className={`split-layout ${selected ? 'has-panel' : ''}`}>
         <div className="table-wrap">
-          {loading && <p className="loading-pulse">Loading calls…</p>}
-          {!loading && calls.length === 0 && (
-            <div className="empty-state">No quoted/booked Aloware calls yet.</div>
+          {loading && <p className="loading-pulse">Loading Aloware calls…</p>}
+          {!loading && visible.length === 0 && (
+            <div className="empty-state">
+              No Aloware dispositions yet for this filter. New statuses appear when agents dispose in Aloware.
+            </div>
           )}
-          {!loading && calls.length > 0 && (
+          {!loading && visible.length > 0 && (
             <table>
               <thead>
                 <tr>
                   <th>Lead</th>
                   <th>Agent</th>
                   <th>When</th>
-                  <th>Status</th>
+                  <th>Aloware status</th>
                   <th>Job value</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {calls.map((c) => (
-                  <tr key={c.id} className={!c.job_value_cents ? 'row-needs-value' : ''}>
-                    <td style={{ fontWeight: 600 }}>{c.lead_name ?? c.phone}</td>
-                    <td>{c.agent_name ?? '—'}</td>
-                    <td>{fmtWhen(c.started_at)}</td>
-                    <td>
-                      {c.quote_type === 'booked' || c.disposition_code === 'booked-deposit-collected' ? (
-                        <span className="badge good">Booked - Deposit Collected</span>
-                      ) : c.quote_type === 'booked_pending' ||
-                        c.disposition_code === 'booked-deposit-pending' ? (
-                        <span className="badge pending">Booked - Deposit Pending</span>
-                      ) : (
-                        <span className="badge">Quoted</span>
-                      )}
-                    </td>
-                    <td>
-                      {c.job_value_cents
-                        ? formatCurrency(c.job_value_cents / 100)
-                        : <span className="badge pending">Missing</span>}
-                    </td>
-                    <td>
-                      <button type="button" className="btn-text" onClick={() => openForm(c)}>
-                        {c.job_value_cents ? 'Edit' : 'Enter'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {visible.map((c) => {
+                  const label = statusLabel(c);
+                  const canEnter = isQuoteTrack(c);
+                  return (
+                    <tr key={c.id} className={canEnter && !c.job_value_cents ? 'row-needs-value' : ''}>
+                      <td style={{ fontWeight: 600 }}>{c.lead_name ?? c.phone}</td>
+                      <td>{c.agent_name ?? '—'}</td>
+                      <td>{fmtWhen(c.started_at)}</td>
+                      <td>
+                        <span className={`badge ${statusTone(c)}`.trim()}>{label}</span>
+                      </td>
+                      <td>
+                        {c.job_value_cents != null
+                          ? formatCurrency(c.job_value_cents / 100)
+                          : canEnter
+                            ? <span className="badge pending">Missing</span>
+                            : '—'}
+                      </td>
+                      <td>
+                        {canEnter ? (
+                          <button type="button" className="btn-text" onClick={() => openForm(c)}>
+                            {c.job_value_cents != null ? 'Edit' : 'Enter'}
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -179,6 +288,8 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
                 <br />
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {selected.phone} · {selected.agent_name ?? 'Aloware'} · {fmtWhen(selected.started_at)}
+                  <br />
+                  Status: {statusLabel(selected)}
                 </span>
               </p>
 
@@ -202,12 +313,12 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
                   <span>$</span>
                   <input
                     type="number"
-                    min="1"
-                    step="1"
+                    min="0.01"
+                    step="0.01"
                     required
                     value={jobValue}
                     onChange={(e) => setJobValue(e.target.value)}
-                    placeholder="10800"
+                    placeholder="10800.00"
                   />
                 </div>
               </div>

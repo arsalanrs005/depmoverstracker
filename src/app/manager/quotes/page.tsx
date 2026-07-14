@@ -84,7 +84,7 @@ function QuotesInner() {
     <>
       <CommandHeader
         title="Quote Tracking Dashboard"
-        subtitle="Quotes sent, deposits, and agent performance."
+        subtitle="Call Quote, Email Quote, Deposit Collected, and agent performance."
         filters={
           <>
             <FilterSelect

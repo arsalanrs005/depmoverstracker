@@ -1347,7 +1347,76 @@ body {
 }
 
 .quote-kpi-row {
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.aloware-tracker {
+  margin-top: 1.5rem;
+}
+
+.aloware-tracker-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.aloware-tracker-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  max-width: 40rem;
+}
+
+.aloware-tracker-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.aloware-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.aloware-status-bar button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.28rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.aloware-status-bar button span {
+  color: var(--blue-700);
+  font-variant-numeric: tabular-nums;
+}
+
+.aloware-status-bar button.active {
+  border-color: var(--blue-900);
+  background: var(--blue-900);
+  color: #fff;
+}
+
+.aloware-status-bar button.active span {
+  color: #bfdbfe;
+}
+
+.badge.neutral {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .quote-volume-chart {
