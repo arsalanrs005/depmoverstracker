@@ -2,7 +2,6 @@
  * Track-scoped KPI definitions for manager dashboard.
  */
 
-import { ALOWARE_DISPOSITIONS } from './aloware-dispositions';
 import type { CallTrack } from './tracks';
 
 export type TrackKpiRow = {
@@ -82,24 +81,6 @@ export function normalizeTrackKpiRow(row: Record<string, unknown>): TrackKpiRow 
   };
 }
 
-function alowareStatusTone(code: string): KpiCard['tone'] {
-  if (code === 'quoted' || code === 'booked-deposit-collected' || code === 'closed-deal') {
-    return 'good';
-  }
-  if (code === 'booked-deposit-pending') return 'highlight';
-  if (
-    code === 'do-not-call' ||
-    code === 'no-answer' ||
-    code === 'voicemail-left' ||
-    code === 'wrong-number' ||
-    code === 'connected-not-interested'
-  ) {
-    return 'bad';
-  }
-  if (code === 'callback-requested' || code === 'connected-objection') return 'warn';
-  return 'default';
-}
-
 function countForDisposition(k: TrackKpiRow, code: string): number {
   if (code === 'quoted') {
     return (
@@ -113,7 +94,7 @@ function countForDisposition(k: TrackKpiRow, code: string): number {
   if (code === 'booked-deposit-collected') {
     const closed = k.disposition_counts?.['closed-deal'] ?? 0;
     if (k.booked_collected_count != null) {
-      // booked_collected_count includes closed-deal in SQL — keep Closed deal as its own card
+      // booked_collected_count includes closed-deal in SQL — keep Closed deal separate
       return Math.max(0, k.booked_collected_count - closed);
     }
     return k.disposition_counts?.['booked-deposit-collected'] ?? 0;
@@ -124,46 +105,7 @@ function countForDisposition(k: TrackKpiRow, code: string): number {
 /** KPI cards shown when a single track tab is selected */
 export function kpiCardsForTrack(k: TrackKpiRow): KpiCard[] {
   if (k.track === 'aloware_closer') {
-    const ops: KpiCard[] = [
-      {
-        key: 'inbound_answer_rate',
-        label: 'Inbound answer rate',
-        value: k.inbound_answer_rate != null ? `${k.inbound_answer_rate}%` : '—',
-        sub: `${k.inbound_answered} of ${k.inbound_total} inbound`,
-        tone: 'highlight',
-      },
-      {
-        key: 'inbound_missed',
-        label: 'Missed / abandoned inbound',
-        value: k.inbound_missed_abandoned,
-        tone: k.inbound_missed_abandoned > 0 ? 'bad' : 'default',
-      },
-      {
-        key: 'outbound',
-        label: 'Outbound calls',
-        value: k.outbound_total,
-        sub: 'Count only',
-      },
-      {
-        key: 'disposed',
-        label: 'Agent dispositions',
-        value: k.dispositions_submitted,
-      },
-      {
-        key: 'total',
-        label: 'Total calls',
-        value: k.total_calls,
-      },
-    ];
-
-    const statusCards: KpiCard[] = ALOWARE_DISPOSITIONS.map((d) => ({
-      key: `disp-${d.code}`,
-      label: d.label,
-      value: countForDisposition(k, d.code),
-      tone: alowareStatusTone(d.code),
-    }));
-
-    return [...ops, ...statusCards];
+    return [...alowareQuoteTrackerCards(k), ...alowareOpsCards(k)];
   }
 
   if (k.track === '8x8_closer') {
@@ -235,6 +177,64 @@ export function kpiCardsForTrack(k: TrackKpiRow): KpiCard[] {
       key: 'outbound',
       label: 'Outbound',
       value: k.outbound_total,
+    },
+  ];
+}
+
+/** Aloware quote tracker — only the three quote/booking statuses */
+export function alowareQuoteTrackerCards(k: TrackKpiRow): KpiCard[] {
+  return [
+    {
+      key: 'quoted',
+      label: 'Quoted',
+      value: countForDisposition(k, 'quoted'),
+      tone: 'good',
+    },
+    {
+      key: 'booked-pending',
+      label: 'Booked - Deposit Pending',
+      value: countForDisposition(k, 'booked-deposit-pending'),
+      tone: 'highlight',
+    },
+    {
+      key: 'booked-collected',
+      label: 'Booked - Deposit Collected',
+      value: countForDisposition(k, 'booked-deposit-collected'),
+      tone: 'good',
+    },
+  ];
+}
+
+export function alowareOpsCards(k: TrackKpiRow): KpiCard[] {
+  return [
+    {
+      key: 'inbound_answer_rate',
+      label: 'Inbound answer rate',
+      value: k.inbound_answer_rate != null ? `${k.inbound_answer_rate}%` : '—',
+      sub: `${k.inbound_answered} of ${k.inbound_total} inbound`,
+      tone: 'highlight',
+    },
+    {
+      key: 'inbound_missed',
+      label: 'Missed / abandoned inbound',
+      value: k.inbound_missed_abandoned,
+      tone: k.inbound_missed_abandoned > 0 ? 'bad' : 'default',
+    },
+    {
+      key: 'outbound',
+      label: 'Outbound calls',
+      value: k.outbound_total,
+      sub: 'Count only',
+    },
+    {
+      key: 'disposed',
+      label: 'Agent dispositions',
+      value: k.dispositions_submitted,
+    },
+    {
+      key: 'total',
+      label: 'Total calls',
+      value: k.total_calls,
     },
   ];
 }

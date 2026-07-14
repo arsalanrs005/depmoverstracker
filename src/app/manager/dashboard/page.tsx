@@ -15,6 +15,8 @@ import {
 } from '@/components/ManagerDashboard';
 import {
   kpiCardsForTrack,
+  alowareOpsCards,
+  alowareQuoteTrackerCards,
   type TrackKpiRow,
 } from '@/lib/dashboard-kpis';
 import { TRACK_LABELS, TRACK_ORDER, TRACK_TAB_LABELS, type CallTrack } from '@/lib/tracks';
@@ -203,7 +205,16 @@ function DashboardInner() {
 
         {stats && !loading && track !== 'all' && activeKpi && (
           <>
-            <KpiGrid cards={kpiCardsForTrack(activeKpi)} />
+            {track === 'aloware_closer' ? (
+              <>
+                <h2 className="section-title">Quote tracker</h2>
+                <KpiGrid cards={alowareQuoteTrackerCards(activeKpi)} />
+                <h2 className="section-title" style={{ marginTop: '1.25rem' }}>Call activity</h2>
+                <KpiGrid cards={alowareOpsCards(activeKpi)} />
+              </>
+            ) : (
+              <KpiGrid cards={kpiCardsForTrack(activeKpi)} />
+            )}
 
             <h2 className="section-title">By agent</h2>
             <AgentTable agents={stats.byAgent} track={track} />
