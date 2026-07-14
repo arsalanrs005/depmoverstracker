@@ -1092,7 +1092,7 @@ export type QuoteEntryCall = {
   quote_details_at: Date | null;
 };
 
-/** Aloware tracker — disposed closer calls with exact Aloware statuses. */
+/** Aloware quote tracker — only Quoted / Deposit Pending / Deposit Collected */
 export async function listQuoteEntryCalls(limit = 150): Promise<QuoteEntryCall[]> {
   const db = getDb();
   const rows = await db`
@@ -1116,19 +1116,13 @@ export async function listQuoteEntryCalls(limit = 150): Promise<QuoteEntryCall[]
     WHERE cs.track = 'aloware_closer'
       AND cs.source IN ('aloware_inbound', 'aloware_outbound')
       AND (
-        cs.disposition_code IS NOT NULL
-        OR cs.wrap_up_code IS NOT NULL
-        OR cs.quote_type IS NOT NULL
-      )
-    ORDER BY
-      CASE
-        WHEN cs.disposition_code IN (
+        cs.disposition_code IN (
           'quoted', 'connected-quoted',
           'booked-deposit-pending', 'booked-deposit-collected', 'closed-deal'
         )
         OR cs.quote_type IN ('quoted', 'booked_pending', 'booked')
-        THEN 0 ELSE 1
-      END,
+      )
+    ORDER BY
       (cs.job_value_cents IS NULL) DESC,
       COALESCE(cs.started_at, cs.created_at) DESC
     LIMIT ${limit}
