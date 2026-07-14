@@ -817,12 +817,16 @@ export async function getQuoteTrackingStats(
       )
   `;
 
-  const quotesSent = Number(summaryRow?.quotes_sent ?? 0);
   const bookedCount = Number(summaryRow?.booked_count ?? 0);
   const totalQuoteValueCents = Number(summaryRow?.total_quote_value_cents ?? 0);
   const revenueCents = Number(summaryRow?.revenue_cents ?? 0);
   const quotesWithValue = Number(summaryRow?.quotes_with_value ?? 0);
-  const depositsCollected = bookedCount > 0 ? bookedCount : Number(depositRow?.deposits_collected ?? 0);
+  const depositsFromCallsOrEvents =
+    bookedCount > 0 ? bookedCount : Number(depositRow?.deposits_collected ?? 0);
+
+  const manualTotals = await sumManualQuoteTotals(period);
+  const quotesSent = Number(summaryRow?.quotes_sent ?? 0) + manualTotals.quotes;
+  const depositsCollected = depositsFromCallsOrEvents + manualTotals.deposits;
   const quoteToDepositPct =
     quotesSent > 0 ? Math.round((depositsCollected / quotesSent) * 10000) / 100 : null;
   const avgQuoteValueCents =
@@ -907,6 +911,22 @@ export async function getQuoteTrackingStats(
     }
   }
 
+  const manualByAgent = await listManualQuoteTotalsByAgent(period);
+  for (const row of manualByAgent) {
+    const existing = byAgent.find((a) => a.agent_name === row.agent_name);
+    if (existing) {
+      existing.quotes_sent += row.quotes;
+      existing.deposits_collected += row.deposits;
+    } else {
+      byAgent.push({
+        agent_name: row.agent_name,
+        quotes_sent: row.quotes,
+        deposits_collected: row.deposits,
+        revenue: 0,
+      });
+    }
+  }
+
   byAgent.sort((a, b) => b.quotes_sent - a.quotes_sent || b.deposits_collected - a.deposits_collected);
 
   const dailyTrend = dailyRows.map((r) => {
@@ -940,9 +960,11 @@ export async function getQuoteTrackingStats(
     monthlyQuoteValue: [{ label: monthLabel, value: quotesSent }],
     byAgent,
     dataNote:
-      totalQuoteValueCents > 0
-        ? 'Dollar values and deposits from manager-entered Quote sent / Deposit collected details below.'
-        : 'Use Enter below to log Quote sent or Deposit collected with job value — disposition counts seed Quotes Sent.',
+      manualTotals.quotes + manualTotals.deposits > 0
+        ? 'Includes Granot manual entries (call + email quotes and deposits) plus system call data.'
+        : totalQuoteValueCents > 0
+          ? 'Dollar values and deposits from manager-entered Quote sent / Deposit collected details below.'
+          : 'Log Granot totals below (call / email quotes + deposits), or enter job value on Aloware calls.',
   } satisfies QuoteTrackingPayload;
 }
 
@@ -1113,4 +1135,157 @@ export async function listInventoryIntakes(limit = 100) {
     ORDER BY created_at DESC
     LIMIT ${safeLimit}
   `;
+}
+
+function periodStartCutoff(period: DashboardPeriod): string {
+  const days = period === 'day' ? 0 : period === 'week' ? 6 : 29;
+  const [y, m, d] = todayEtYmd().split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() - days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function todayEtYmd(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+/** Closers shown on the Granot entry sheet. */
+export async function listQuoteManualAgents() {
+  const db = getDb();
+  return db`
+    SELECT id, name, platform, team
+    FROM agents
+    WHERE team IN ('inbound_closers', '8x8_closer')
+    ORDER BY
+      CASE team WHEN 'inbound_closers' THEN 0 ELSE 1 END,
+      name
+  `;
+}
+
+export async function getManualQuoteSheet(periodType: 'day' | 'week', periodStart: string) {
+  const db = getDb();
+  const agents = await listQuoteManualAgents();
+  const rows = await db`
+    SELECT agent_id, quotes_call, quotes_email, deposits_collected, entered_by, updated_at
+    FROM agent_quote_manual
+    WHERE period_type = ${periodType}
+      AND period_start = ${periodStart}::date
+  `;
+  const byAgent = new Map(
+    rows.map((r) => [
+      String(r.agent_id),
+      {
+        quotesCall: Number(r.quotes_call),
+        quotesEmail: Number(r.quotes_email),
+        depositsCollected: Number(r.deposits_collected),
+        enteredBy: r.entered_by != null ? String(r.entered_by) : null,
+        updatedAt: r.updated_at as Date | null,
+      },
+    ])
+  );
+
+  return agents.map((a) => {
+    const existing = byAgent.get(String(a.id));
+    return {
+      agentId: String(a.id),
+      agentName: String(a.name),
+      platform: String(a.platform),
+      team: a.team != null ? String(a.team) : null,
+      quotesCall: existing?.quotesCall ?? 0,
+      quotesEmail: existing?.quotesEmail ?? 0,
+      depositsCollected: existing?.depositsCollected ?? 0,
+      enteredBy: existing?.enteredBy ?? null,
+      updatedAt: existing?.updatedAt ?? null,
+    };
+  });
+}
+
+export async function upsertManualQuoteRows(params: {
+  periodType: 'day' | 'week';
+  periodStart: string;
+  enteredBy: string;
+  rows: Array<{
+    agentId: string;
+    quotesCall: number;
+    quotesEmail: number;
+    depositsCollected: number;
+  }>;
+}) {
+  const db = getDb();
+  let saved = 0;
+  for (const row of params.rows) {
+    await db`
+      INSERT INTO agent_quote_manual (
+        agent_id, period_type, period_start,
+        quotes_call, quotes_email, deposits_collected,
+        entered_by, updated_at
+      ) VALUES (
+        ${row.agentId}::uuid,
+        ${params.periodType},
+        ${params.periodStart}::date,
+        ${row.quotesCall},
+        ${row.quotesEmail},
+        ${row.depositsCollected},
+        ${params.enteredBy},
+        now()
+      )
+      ON CONFLICT (agent_id, period_type, period_start) DO UPDATE SET
+        quotes_call = EXCLUDED.quotes_call,
+        quotes_email = EXCLUDED.quotes_email,
+        deposits_collected = EXCLUDED.deposits_collected,
+        entered_by = EXCLUDED.entered_by,
+        updated_at = now()
+    `;
+    saved += 1;
+  }
+  return { saved };
+}
+
+async function sumManualQuoteTotals(period: DashboardPeriod) {
+  const db = getDb();
+  const cutoff = periodStartCutoff(period);
+  const today = todayEtYmd();
+  const [row] = await db`
+    SELECT
+      COALESCE(SUM(quotes_call + quotes_email), 0)::int AS quotes,
+      COALESCE(SUM(deposits_collected), 0)::int AS deposits
+    FROM agent_quote_manual
+    WHERE period_start >= ${cutoff}::date
+      AND period_start <= ${today}::date
+      AND (
+        period_type = 'day'
+        OR period_type = 'week'
+      )
+  `;
+  return {
+    quotes: Number(row?.quotes ?? 0),
+    deposits: Number(row?.deposits ?? 0),
+  };
+}
+
+async function listManualQuoteTotalsByAgent(period: DashboardPeriod) {
+  const db = getDb();
+  const cutoff = periodStartCutoff(period);
+  const today = todayEtYmd();
+  const rows = await db`
+    SELECT
+      ag.name AS agent_name,
+      COALESCE(SUM(m.quotes_call + m.quotes_email), 0)::int AS quotes,
+      COALESCE(SUM(m.deposits_collected), 0)::int AS deposits
+    FROM agent_quote_manual m
+    INNER JOIN agents ag ON ag.id = m.agent_id
+    WHERE m.period_start >= ${cutoff}::date
+      AND m.period_start <= ${today}::date
+    GROUP BY ag.name
+  `;
+  return rows.map((r) => ({
+    agent_name: String(r.agent_name),
+    quotes: Number(r.quotes),
+    deposits: Number(r.deposits),
+  }));
 }

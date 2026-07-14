@@ -24,6 +24,7 @@ const migration003 = path.join(process.cwd(), 'db', 'migration-003-agents-unique
 const migration004 = path.join(process.cwd(), 'db', 'migration-004-quote-details.sql');
 const migration005 = path.join(process.cwd(), 'db', 'migration-005-app-users.sql');
 const migration006 = path.join(process.cwd(), 'db', 'migration-006-inventory-intakes.sql');
+const migration007 = path.join(process.cwd(), 'db', 'migration-007-agent-quote-manual.sql');
 const seedPath = path.join(process.cwd(), 'db', 'seed-agents.sql');
 const seedUsersPath = path.join(process.cwd(), 'db', 'seed-app-users.sql');
 const sqlText = fs.readFileSync(schemaPath, 'utf8');
@@ -45,6 +46,7 @@ async function main() {
   await applyFile('Migration', migration004);
   await applyFile('Migration', migration005);
   await applyFile('Migration', migration006);
+  await applyFile('Migration', migration007);
   if (fs.existsSync(seedPath)) {
     await db.unsafe(fs.readFileSync(seedPath, 'utf8'));
     console.log('Seed applied:', seedPath);

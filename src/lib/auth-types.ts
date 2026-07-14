@@ -40,6 +40,7 @@ const EXECUTIVE_PREFIXES = [
   '/manager/inventory-intake',
   '/api/dispositions/',
   '/api/quotes/entry',
+  '/api/quotes/manual',
   '/api/inventory-intakes',
   '/api/agents',
 ];

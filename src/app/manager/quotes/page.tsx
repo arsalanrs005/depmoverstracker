@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { AlowareQuoteEntry } from '@/components/AlowareQuoteEntry';
+import { GranotQuoteEntry } from '@/components/GranotQuoteEntry';
 import { CommandHeader, FilterSelect } from '@/components/CommandHeader';
 import {
   QuoteKpiRow,
@@ -69,9 +70,10 @@ function QuotesInner() {
       <>
         <CommandHeader
           title="Quote Entry"
-          subtitle="Enter job value and move details for quoted and booked Aloware calls."
+          subtitle="Log Granot day/week totals by agent, or enter job value on quoted Aloware calls."
         />
         <div className="scc-content">
+          <GranotQuoteEntry />
           <AlowareQuoteEntry />
         </div>
       </>
@@ -151,12 +153,16 @@ function QuotesInner() {
               {data.dataNote}
             </p>
 
+            <GranotQuoteEntry onSaved={load} />
             <AlowareQuoteEntry onSaved={load} />
           </>
         )}
 
         {!loading && !data && !error && isAdmin && (
-          <AlowareQuoteEntry onSaved={load} />
+          <>
+            <GranotQuoteEntry onSaved={load} />
+            <AlowareQuoteEntry onSaved={load} />
+          </>
         )}
       </div>
     </>

@@ -2083,3 +2083,309 @@ tr.row-needs-value td {
     justify-content: flex-start;
   }
 }
+
+/* —— Granot manual quote entry —— */
+.granot-panel {
+  margin: 1.75rem 0 2rem;
+  padding: 1.35rem 1.35rem 1.5rem;
+  background: linear-gradient(165deg, #ffffff 0%, #f4f8ff 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.granot-panel-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.15rem;
+}
+
+.granot-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--blue-600);
+}
+
+.granot-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--blue-900);
+}
+
+.granot-sub {
+  margin: 0;
+  max-width: 38rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.granot-totals {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.granot-totals > div {
+  min-width: 4.5rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  text-align: center;
+}
+
+.granot-totals strong {
+  display: block;
+  font-size: 1.2rem;
+  color: var(--blue-900);
+  line-height: 1.1;
+}
+
+.granot-totals span {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.granot-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1.1rem;
+  padding: 0.85rem 1rem;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.granot-segment {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--cream-dark);
+  border-radius: 999px;
+}
+
+.granot-segment button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 0.95rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.granot-segment button.active {
+  background: var(--blue-700);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.28);
+}
+
+.granot-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.granot-date input {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--blue-900);
+  background: #fff;
+}
+
+.granot-period-label {
+  margin: 0;
+  flex: 1;
+  min-width: 10rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--blue-900);
+}
+
+.granot-save {
+  appearance: none;
+  border: none;
+  margin-left: auto;
+  padding: 0.65rem 1.2rem;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
+}
+
+.granot-save:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.granot-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.granot-group + .granot-group {
+  margin-top: 1.25rem;
+}
+
+.granot-group-title {
+  margin: 0 0 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--blue-700);
+}
+
+.granot-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.granot-agent-card {
+  padding: 0.95rem 1rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.granot-agent-card:focus-within {
+  border-color: var(--blue-200);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.1);
+}
+
+.granot-agent-name {
+  font-weight: 700;
+  color: var(--blue-900);
+  margin-bottom: 0.7rem;
+  font-size: 0.95rem;
+}
+
+.granot-agent-fields {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.granot-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.granot-stepper.accent-call {
+  background: #eff6ff;
+}
+
+.granot-stepper.accent-email {
+  background: #f5f3ff;
+}
+
+.granot-stepper.accent-deposit {
+  background: #ecfdf5;
+}
+
+.granot-stepper-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  min-width: 3.6rem;
+}
+
+.granot-stepper-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.granot-step-btn {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--blue-900);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.granot-step-btn:hover {
+  border-color: var(--blue-300);
+  background: var(--blue-50);
+}
+
+.granot-step-input {
+  width: 3.2rem;
+  text-align: center;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--blue-900);
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0.25rem 0;
+  -moz-appearance: textfield;
+}
+
+.granot-step-input::-webkit-outer-spin-button,
+.granot-step-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.granot-step-input:focus {
+  outline: none;
+  border-color: var(--blue-300);
+  background: #fff;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .granot-panel {
+    padding: 1.1rem;
+  }
+
+  .granot-save {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .granot-period-label {
+    width: 100%;
+  }
+}
