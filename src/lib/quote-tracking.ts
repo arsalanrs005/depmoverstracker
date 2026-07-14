@@ -3,6 +3,7 @@ import type { DashboardPeriod } from './db';
 export type QuoteAgentRow = {
   agent_name: string;
   quotes_sent: number;
+  deposits_pending?: number;
   deposits_collected: number;
   revenue: number;
 };
@@ -19,6 +20,7 @@ export type QuoteTrackingPayload = {
   summary: {
     quotes_sent: number;
     total_quote_value: number;
+    deposits_pending: number;
     deposits_collected: number;
     revenue_generated: number;
     quote_to_deposit_pct: number | null;

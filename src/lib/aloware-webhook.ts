@@ -1,5 +1,5 @@
 import { normalizePhone } from './cdr-parser';
-import { mapAlowareDispositionId } from './tracks';
+import { resolveAlowareDisposition } from './aloware-dispositions';
 
 export type AlowareWebhookPayload = {
   event?: string;
@@ -35,6 +35,7 @@ export type ParsedAlowareCall = {
   endedAt: Date | null;
   dispositionCode: string | null;
   callOutcome: 'good' | 'bad' | 'neutral' | 'pending';
+  quoteType: 'quoted' | 'booked_pending' | 'booked' | null;
   isAbandoned: boolean;
 };
 
@@ -53,9 +54,8 @@ export function parseAlowareWebhook(raw: unknown): ParsedAlowareCall | null {
   if (!phone || phone.length < 10) return null;
 
   const dirNum = str(b.direction);
-  const direction: 'inbound' | 'outbound' = dirNum === '1' || event.toLowerCase().includes('inbound')
-    ? 'inbound'
-    : 'outbound';
+  const direction: 'inbound' | 'outbound' =
+    dirNum === '1' || event.toLowerCase().includes('inbound') ? 'inbound' : 'outbound';
 
   const dispositionStatus = str(b.disposition_status).toLowerCase();
   const isAbandoned = dispositionStatus === 'abandoned' || event.includes('Abandoned');
@@ -63,13 +63,27 @@ export function parseAlowareWebhook(raw: unknown): ParsedAlowareCall | null {
   const alowareDispositionId =
     str(b.call_disposition_id) || str(contact.disposition_status_id) || null;
 
-  const mapped = mapAlowareDispositionId(alowareDispositionId);
   const dispositionLabel = str(b.call_disposition) || str(contact.disposition_status) || null;
+
+  const mapped = resolveAlowareDisposition({
+    dispositionId: alowareDispositionId,
+    dispositionLabel,
+  });
 
   let dispositionCode = mapped?.code ?? null;
   let callOutcome: 'good' | 'bad' | 'neutral' | 'pending' = mapped?.outcome ?? 'pending';
+  const quoteType = mapped?.quoteType ?? null;
 
-  if (isAbandoned && !dispositionCode) {
+  // Persist unknown Aloware labels so every status is still trackable in Call Activity
+  if (!dispositionCode && dispositionLabel) {
+    dispositionCode = dispositionLabel
+      .toLowerCase()
+      .replace(/[–—]/g, '-')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  }
+
+  if (isAbandoned && !mapped) {
     callOutcome = 'bad';
   }
 
@@ -98,6 +112,7 @@ export function parseAlowareWebhook(raw: unknown): ParsedAlowareCall | null {
     endedAt: parseAloDate(str(b.updated_at)),
     dispositionCode,
     callOutcome,
+    quoteType,
     isAbandoned,
   };
 }

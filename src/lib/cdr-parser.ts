@@ -237,12 +237,13 @@ export function parseCdrCsv(text: string): ParsedCdrCall[] {
 }
 
 export const DISPOSITION_OPTIONS = [
-  { code: 'connected-quoted', label: 'Connected — Quoted', tag: 'disp-connected-quoted', outcome: 'good' as const },
-  { code: 'callback-scheduled', label: 'Callback Scheduled', tag: 'disp-callback-scheduled', outcome: 'neutral' as const },
+  { code: 'connected-quoted', label: 'Quoted', tag: 'disp-quoted', outcome: 'good' as const },
+  { code: 'callback-scheduled', label: 'Callback Requested', tag: 'disp-callback-requested', outcome: 'neutral' as const },
   { code: 'voicemail-left', label: 'Voicemail Left', tag: 'disp-voicemail-left', outcome: 'bad' as const },
   { code: 'no-answer', label: 'No Answer', tag: 'disp-no-answer', outcome: 'bad' as const },
-  { code: 'not-interested', label: 'Not Interested', tag: 'disp-not-interested', outcome: 'bad' as const },
+  { code: 'not-interested', label: 'Connected - Not Interested', tag: 'disp-connected-not-interested', outcome: 'bad' as const },
   { code: 'dnc', label: 'Do Not Call', tag: 'disp-dnc', outcome: 'bad' as const },
+  { code: 'wrong-number', label: 'Wrong Number', tag: 'disp-wrong-number', outcome: 'bad' as const },
 ] as const;
 
 export type DispositionCode = (typeof DISPOSITION_OPTIONS)[number]['code'];

@@ -299,10 +299,14 @@ export async function upsertAlowareCallDisposed(parsed: ParsedAlowareCall) {
         ended_at = COALESCE(${parsed.endedAt}, ended_at),
         duration_sec = COALESCE(${parsed.talkTimeSec ?? parsed.durationSec}, duration_sec),
         disposition_code = COALESCE(${parsed.dispositionCode}, disposition_code),
-        wrap_up_code = COALESCE(${parsed.dispositionCode}, wrap_up_code),
+        wrap_up_code = COALESCE(${parsed.dispositionLabel ?? parsed.dispositionCode}, wrap_up_code),
         call_outcome = CASE
           WHEN ${parsed.dispositionCode} IS NOT NULL THEN ${parsed.callOutcome}
           ELSE call_outcome
+        END,
+        quote_type = CASE
+          WHEN ${parsed.quoteType}::text IS NOT NULL THEN ${parsed.quoteType}
+          ELSE quote_type
         END,
         disposition_source = CASE
           WHEN ${parsed.dispositionCode} IS NOT NULL THEN 'aloware_agent'
@@ -329,7 +333,7 @@ export async function upsertAlowareCallDisposed(parsed: ParsedAlowareCall) {
       aloware_user_id, aloware_user_name, agent_name,
       lead_name, ghl_contact_id,
       started_at, ended_at, duration_sec,
-      disposition_code, wrap_up_code, call_outcome,
+      disposition_code, wrap_up_code, call_outcome, quote_type,
       disposition_source, needs_disposition,
       disposition_submitted_at, agent_notes_app, hangup_reason
     ) VALUES (
@@ -339,7 +343,10 @@ export async function upsertAlowareCallDisposed(parsed: ParsedAlowareCall) {
       ${parsed.leadName}, ${parsed.ghlContactId},
       ${parsed.startedAt ?? new Date()}, ${parsed.endedAt ?? new Date()},
       ${parsed.talkTimeSec ?? parsed.durationSec},
-      ${parsed.dispositionCode}, ${parsed.dispositionCode}, ${parsed.callOutcome},
+      ${parsed.dispositionCode},
+      ${parsed.dispositionLabel ?? parsed.dispositionCode},
+      ${parsed.callOutcome},
+      ${parsed.quoteType},
       ${hasDisposition ? 'aloware_agent' : null},
       ${needsDisposition},
       ${hasDisposition ? new Date() : null},
@@ -790,10 +797,31 @@ export async function getQuoteTrackingStats(
 
   const [summaryRow] = await db`
     SELECT
-      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes_sent,
-      COUNT(*) FILTER (WHERE cs.quote_type = 'booked')::int AS booked_count,
-      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS total_quote_value_cents,
-      COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.quote_type = 'booked' AND cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('quoted', 'connected-quoted')
+          OR cs.quote_type = 'quoted'
+      )::int AS quotes_sent,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code = 'booked-deposit-pending'
+          OR cs.quote_type = 'booked_pending'
+      )::int AS deposit_pending_count,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('booked-deposit-collected', 'closed-deal')
+          OR cs.quote_type = 'booked'
+      )::int AS booked_count,
+      COALESCE(SUM(cs.job_value_cents) FILTER (
+        WHERE cs.job_value_cents IS NOT NULL
+          AND (
+            cs.disposition_code IN ('quoted', 'connected-quoted', 'booked-deposit-pending', 'booked-deposit-collected', 'closed-deal')
+            OR cs.quote_type IN ('quoted', 'booked_pending', 'booked')
+          )
+      ), 0)::bigint AS total_quote_value_cents,
+      COALESCE(SUM(cs.job_value_cents) FILTER (
+        WHERE (
+          cs.disposition_code IN ('booked-deposit-collected', 'closed-deal')
+          OR cs.quote_type = 'booked'
+        ) AND cs.job_value_cents IS NOT NULL
+      ), 0)::bigint AS revenue_cents,
       COUNT(*) FILTER (WHERE cs.job_value_cents IS NOT NULL)::int AS quotes_with_value
     FROM call_sessions cs
     WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
@@ -818,6 +846,7 @@ export async function getQuoteTrackingStats(
   `;
 
   const bookedCount = Number(summaryRow?.booked_count ?? 0);
+  const depositPendingCount = Number(summaryRow?.deposit_pending_count ?? 0);
   const totalQuoteValueCents = Number(summaryRow?.total_quote_value_cents ?? 0);
   const revenueCents = Number(summaryRow?.revenue_cents ?? 0);
   const quotesWithValue = Number(summaryRow?.quotes_with_value ?? 0);
@@ -827,6 +856,7 @@ export async function getQuoteTrackingStats(
   const manualTotals = await sumManualQuoteTotals(period);
   const quotesSent = Number(summaryRow?.quotes_sent ?? 0) + manualTotals.quotes;
   const depositsCollected = depositsFromCallsOrEvents + manualTotals.deposits;
+  const depositsPending = depositPendingCount;
   const quoteToDepositPct =
     quotesSent > 0 ? Math.round((depositsCollected / quotesSent) * 10000) / 100 : null;
   const avgQuoteValueCents =
@@ -835,7 +865,10 @@ export async function getQuoteTrackingStats(
   const dailyRows = await db`
     SELECT
       (COALESCE(cs.started_at, cs.created_at) AT TIME ZONE 'America/New_York')::date AS day,
-      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('quoted', 'connected-quoted')
+          OR cs.quote_type = 'quoted'
+      )::int AS quotes
     FROM call_sessions cs
     WHERE COALESCE(cs.started_at, cs.created_at) >= now() - ${interval}::interval
       AND cs.track = ANY(${tracks})
@@ -850,8 +883,18 @@ export async function getQuoteTrackingStats(
   const agentQuoteRows = await db`
     SELECT
       COALESCE(ag.name, cs.agent_name, 'Unknown') AS agent_name,
-      COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes_sent,
-      COUNT(*) FILTER (WHERE cs.quote_type = 'booked')::int AS deposits_booked,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('quoted', 'connected-quoted')
+          OR cs.quote_type = 'quoted'
+      )::int AS quotes_sent,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code = 'booked-deposit-pending'
+          OR cs.quote_type = 'booked_pending'
+      )::int AS deposits_pending,
+      COUNT(*) FILTER (
+        WHERE cs.disposition_code IN ('booked-deposit-collected', 'closed-deal')
+          OR cs.quote_type = 'booked'
+      )::int AS deposits_booked,
       COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents
     FROM call_sessions cs
     LEFT JOIN agents ag ON (
@@ -864,7 +907,13 @@ export async function getQuoteTrackingStats(
         (cs.track = 'aloware_closer' AND cs.source IN ('aloware_inbound', 'aloware_outbound'))
         OR (cs.track = '8x8_closer' AND cs.source IN ('8x8_inbound', '8x8_outbound'))
       )
-      AND (cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')
+      AND (
+        cs.disposition_code IN (
+          'quoted', 'connected-quoted',
+          'booked-deposit-pending', 'booked-deposit-collected', 'closed-deal'
+        )
+        OR cs.quote_type IN ('quoted', 'booked_pending', 'booked')
+      )
     GROUP BY COALESCE(ag.name, cs.agent_name, 'Unknown')
     ORDER BY quotes_sent DESC
   `;
@@ -891,10 +940,12 @@ export async function getQuoteTrackingStats(
   const byAgent = agentQuoteRows.map((r) => {
     const name = String(r.agent_name);
     const booked = Number(r.deposits_booked ?? 0);
+    const pending = Number(r.deposits_pending ?? 0);
     const fromEvents = depositMap.get(name) ?? 0;
     return {
       agent_name: name,
       quotes_sent: Number(r.quotes_sent),
+      deposits_pending: pending,
       deposits_collected: booked > 0 ? booked : fromEvents,
       revenue: Math.round(Number(r.revenue_cents ?? 0) / 100),
     };
@@ -905,6 +956,7 @@ export async function getQuoteTrackingStats(
       byAgent.push({
         agent_name: name,
         quotes_sent: 0,
+        deposits_pending: 0,
         deposits_collected: deposits,
         revenue: 0,
       });
@@ -921,6 +973,7 @@ export async function getQuoteTrackingStats(
       byAgent.push({
         agent_name: row.agent_name,
         quotes_sent: row.quotes,
+        deposits_pending: 0,
         deposits_collected: row.deposits,
         revenue: 0,
       });
@@ -951,6 +1004,7 @@ export async function getQuoteTrackingStats(
     summary: {
       quotes_sent: quotesSent,
       total_quote_value: Math.round(totalQuoteValueCents / 100),
+      deposits_pending: depositsPending,
       deposits_collected: depositsCollected,
       revenue_generated: Math.round(revenueCents / 100),
       quote_to_deposit_pct: quoteToDepositPct,
@@ -960,11 +1014,7 @@ export async function getQuoteTrackingStats(
     monthlyQuoteValue: [{ label: monthLabel, value: quotesSent }],
     byAgent,
     dataNote:
-      manualTotals.quotes + manualTotals.deposits > 0
-        ? 'Includes Granot manual entries (call + email quotes and deposits) plus system call data.'
-        : totalQuoteValueCents > 0
-          ? 'Dollar values and deposits from manager-entered Quote sent / Deposit collected details below.'
-          : 'Log Granot totals below (call / email quotes + deposits), or enter job value on Aloware calls.',
+      'Quote Tracking uses Aloware dispositions Quoted, Booked - Deposit Pending, and Booked - Deposit Collected (plus Granot manual entries).',
   } satisfies QuoteTrackingPayload;
 }
 
@@ -1006,8 +1056,11 @@ export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]
     WHERE cs.track = 'aloware_closer'
       AND cs.source IN ('aloware_inbound', 'aloware_outbound')
       AND (
-        cs.call_outcome = 'good'
-        OR cs.disposition_code = 'connected-quoted'
+        cs.disposition_code IN (
+          'quoted', 'connected-quoted',
+          'booked-deposit-pending', 'booked-deposit-collected', 'closed-deal'
+        )
+        OR cs.quote_type IN ('quoted', 'booked_pending', 'booked')
       )
     ORDER BY
       (cs.job_value_cents IS NULL) DESC,
@@ -1033,7 +1086,7 @@ export async function listQuoteEntryCalls(limit = 100): Promise<QuoteEntryCall[]
 
 export async function updateQuoteDetails(params: {
   callId: string;
-  quoteType: 'quoted' | 'booked';
+  quoteType: 'quoted' | 'booked_pending' | 'booked';
   jobValueCents: number;
   moveDate?: string | null;
   originCity?: string | null;

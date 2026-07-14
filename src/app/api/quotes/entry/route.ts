@@ -26,7 +26,12 @@ export async function PATCH(request: Request) {
   try {
     const body = await request.json();
     const callId = String(body.callId ?? '');
-    const quoteType = body.quoteType === 'booked' ? 'booked' : 'quoted';
+    const quoteType =
+      body.quoteType === 'booked'
+        ? 'booked'
+        : body.quoteType === 'booked_pending'
+          ? 'booked_pending'
+          : 'quoted';
     const jobValue = Number(body.jobValue);
     if (!callId) {
       return NextResponse.json({ error: 'callId required' }, { status: 400 });

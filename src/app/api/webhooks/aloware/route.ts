@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { logWebhook, upsertAlowareCallDisposed } from '@/lib/db';
 import { parseAlowareWebhook, isAlowareCallDisposedEvent } from '@/lib/aloware-webhook';
+import { getAlowareDispositionByCode } from '@/lib/aloware-dispositions';
 import { findGhlContactByPhone, syncDispositionToGhl } from '@/lib/ghl-lookup';
-import { DISPOSITION_OPTIONS } from '@/lib/cdr-parser';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,12 +50,12 @@ export async function POST(request: Request) {
 
     let ghl: Record<string, unknown> = { skipped: true };
     if (session?.ghl_contact_id && parsed.dispositionCode) {
-      const option = DISPOSITION_OPTIONS.find((o) => o.code === parsed.dispositionCode);
+      const option = getAlowareDispositionByCode(parsed.dispositionCode);
       if (option) {
         ghl = await syncDispositionToGhl({
           contactId: session.ghl_contact_id as string,
           dispositionCode: parsed.dispositionCode,
-          dispositionTag: option.tag,
+          dispositionTag: option.ghlTag,
           notes: parsed.notes ?? undefined,
         });
       }
@@ -68,6 +68,8 @@ export async function POST(request: Request) {
       communicationId: parsed.communicationId,
       track: 'aloware_closer',
       disposition: parsed.dispositionCode,
+      dispositionLabel: parsed.dispositionLabel,
+      quoteType: parsed.quoteType,
       ghl,
     });
   } catch (err) {

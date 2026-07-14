@@ -13,6 +13,7 @@ export function QuoteKpiRow({
   summary: {
     quotes_sent: number;
     total_quote_value: number;
+    deposits_pending: number;
     deposits_collected: number;
     revenue_generated: number;
     quote_to_deposit_pct: number | null;
@@ -20,14 +21,14 @@ export function QuoteKpiRow({
   };
 }) {
   const cards = [
-    { label: 'Quotes Sent', value: summary.quotes_sent, tone: 'primary' },
+    { label: 'Quoted', value: summary.quotes_sent, tone: 'primary' },
     { label: 'Total Quote Value', value: formatCurrency(summary.total_quote_value) },
-    { label: 'Deposits Collected', value: summary.deposits_collected, tone: 'good' },
+    { label: 'Deposit Pending', value: summary.deposits_pending, tone: 'accent' },
+    { label: 'Deposit Collected', value: summary.deposits_collected, tone: 'good' },
     { label: 'Revenue Generated', value: formatCurrency(summary.revenue_generated) },
     {
       label: 'Quote-to-Deposit Con. %',
       value: formatPct(summary.quote_to_deposit_pct),
-      tone: 'accent',
     },
     {
       label: 'Average Quote Value',
@@ -95,8 +96,8 @@ export function QuotesVsDepositsChart({ agents }: { agents: QuoteAgentRow[] }) {
   return (
     <div className="quote-stacked-chart">
       <div className="quote-stacked-legend">
-        <span><i className="swatch quotes" /> Quotes Sent</span>
-        <span><i className="swatch deposits" /> Deposits Collected</span>
+        <span><i className="swatch quotes" /> Quoted</span>
+        <span><i className="swatch deposits" /> Deposit Collected</span>
       </div>
       {rows.map((r) => {
         const total = r.quotes_sent + r.deposits_collected;

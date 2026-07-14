@@ -27,7 +27,7 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
   const [calls, setCalls] = useState<QuoteCall[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<QuoteCall | null>(null);
-  const [quoteType, setQuoteType] = useState<'quoted' | 'booked'>('quoted');
+  const [quoteType, setQuoteType] = useState<'quoted' | 'booked_pending' | 'booked'>('quoted');
   const [jobValue, setJobValue] = useState('');
   const [moveDate, setMoveDate] = useState('');
   const [originCity, setOriginCity] = useState('');
@@ -55,7 +55,13 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
 
   function openForm(c: QuoteCall) {
     setSelected(c);
-    setQuoteType(c.quote_type === 'booked' ? 'booked' : 'quoted');
+    setQuoteType(
+      c.quote_type === 'booked'
+        ? 'booked'
+        : c.quote_type === 'booked_pending'
+          ? 'booked_pending'
+          : 'quoted'
+    );
     setJobValue(c.job_value_cents ? String(c.job_value_cents / 100) : '');
     setMoveDate(c.move_date ?? '');
     setOriginCity(c.origin_city ?? '');
@@ -99,12 +105,12 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
   return (
     <section className="quote-entry-section">
       <h2 className="section-title">
-        Enter quote sent &amp; deposit collected
+        Enter job value for Quoted / Booked calls
         {needsEntry > 0 && <span className="badge pending" style={{ marginLeft: '0.5rem' }}>{needsEntry} need value</span>}
       </h2>
       <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
-        Pick a quoted/booked Aloware call, set status to Quote sent or Deposit collected, and enter the job value.
-        That feeds the KPIs above and the scoreboard.
+        Aloware dispositions feed this list: Quoted, Booked - Deposit Pending, Booked - Deposit Collected.
+        Add job value here when needed.
       </p>
 
       {message && (
@@ -138,12 +144,13 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
                     <td>{c.agent_name ?? '—'}</td>
                     <td>{fmtWhen(c.started_at)}</td>
                     <td>
-                      {c.quote_type === 'booked' ? (
-                        <span className="badge good">Deposit collected</span>
-                      ) : c.quote_type === 'quoted' ? (
-                        <span className="badge">Quote sent</span>
+                      {c.quote_type === 'booked' || c.disposition_code === 'booked-deposit-collected' ? (
+                        <span className="badge good">Booked - Deposit Collected</span>
+                      ) : c.quote_type === 'booked_pending' ||
+                        c.disposition_code === 'booked-deposit-pending' ? (
+                        <span className="badge pending">Booked - Deposit Pending</span>
                       ) : (
-                        <span className="mini-tag">Needs entry</span>
+                        <span className="badge">Quoted</span>
                       )}
                     </td>
                     <td>
@@ -177,9 +184,15 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
 
               <div className="form-group">
                 <label>Status</label>
-                <select value={quoteType} onChange={(e) => setQuoteType(e.target.value as 'quoted' | 'booked')}>
-                  <option value="quoted">Quote sent</option>
-                  <option value="booked">Deposit collected</option>
+                <select
+                  value={quoteType}
+                  onChange={(e) =>
+                    setQuoteType(e.target.value as 'quoted' | 'booked_pending' | 'booked')
+                  }
+                >
+                  <option value="quoted">Quoted</option>
+                  <option value="booked_pending">Booked - Deposit Pending</option>
+                  <option value="booked">Booked - Deposit Collected</option>
                 </select>
               </div>
 

@@ -1,3 +1,9 @@
+import {
+  ALOWARE_DISPOSITION_ID_MAP,
+  getAlowareDispositionByCode,
+  resolveAlowareDisposition,
+} from './aloware-dispositions';
+
 /**
  * Call routing tracks for dual-stack: Aloware closers vs 8x8 legs.
  */
@@ -38,22 +44,16 @@ export const TRACK_ORDER: CallTrack[] = [
   'retell',
 ];
 
-/** Aloware disposition IDs → app disposition codes (align with WF4 / ALOWARE-CONFIG.md) */
+/** @deprecated Prefer resolveAlowareDisposition — kept for older ID lookups */
 export const ALOWARE_DISPOSITION_MAP: Record<
   string,
   { code: string; outcome: 'good' | 'bad' | 'neutral' }
-> = {
-  '29003': { code: 'connected-quoted', outcome: 'good' },
-  '29004': { code: 'connected-quoted', outcome: 'good' },
-  '29005': { code: 'not-interested', outcome: 'bad' },
-  '29006': { code: 'voicemail-left', outcome: 'bad' },
-  '29007': { code: 'no-answer', outcome: 'bad' },
-  '29008': { code: 'not-interested', outcome: 'bad' },
-  '29009': { code: 'callback-scheduled', outcome: 'neutral' },
-  '29010': { code: 'dnc', outcome: 'bad' },
-  '29011': { code: 'connected-quoted', outcome: 'good' },
-  '29012': { code: 'connected-quoted', outcome: 'good' },
-};
+> = Object.fromEntries(
+  Object.entries(ALOWARE_DISPOSITION_ID_MAP).map(([id, code]) => {
+    const d = getAlowareDispositionByCode(code);
+    return [id, { code, outcome: d?.outcome ?? 'neutral' }];
+  })
+);
 
 const VERIFICATION_HINTS = ['1014', 'verif', 'verification', '6282075195', '628-207-5195'];
 const CS_HINTS = ['1013', 'customer success', '6282075194', '628-207-5194', ' cs '];
@@ -83,8 +83,9 @@ export function inferTrackFrom8x8(params: {
 export function mapAlowareDispositionId(
   id: string | number | null | undefined
 ): { code: string; outcome: 'good' | 'bad' | 'neutral' } | null {
-  if (id == null || id === '') return null;
-  return ALOWARE_DISPOSITION_MAP[String(id)] ?? null;
+  const resolved = resolveAlowareDisposition({ dispositionId: id });
+  if (!resolved) return null;
+  return { code: resolved.code, outcome: resolved.outcome };
 }
 
 export function isValidTrack(t: string): t is CallTrack {
