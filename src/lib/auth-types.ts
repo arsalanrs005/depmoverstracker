@@ -47,7 +47,6 @@ const EXECUTIVE_PREFIXES = [
 const ADMIN_BLOCKED_PREFIXES = [
   '/agent/dispositions',
   '/api/dispositions/',
-  '/api/quotes/entry',
 ];
 
 export function canAccessPath(role: UserRole, pathname: string): boolean {

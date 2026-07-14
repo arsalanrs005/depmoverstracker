@@ -150,7 +150,13 @@ function QuotesInner() {
             <p className="sb-legend" style={{ borderRadius: 'var(--radius-sm)', marginTop: '0.5rem' }}>
               {data.dataNote}
             </p>
+
+            <AlowareQuoteEntry onSaved={load} />
           </>
+        )}
+
+        {!loading && !data && !error && isAdmin && (
+          <AlowareQuoteEntry onSaved={load} />
         )}
       </div>
     </>

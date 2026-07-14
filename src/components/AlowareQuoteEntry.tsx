@@ -99,11 +99,12 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
   return (
     <section className="quote-entry-section">
       <h2 className="section-title">
-        Aloware quote &amp; booking entry
+        Enter quote sent &amp; deposit collected
         {needsEntry > 0 && <span className="badge pending" style={{ marginLeft: '0.5rem' }}>{needsEntry} need value</span>}
       </h2>
       <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '-0.5rem', marginBottom: '1rem' }}>
-        Manager enters job value for quoted or booked Aloware calls — feeds Quote Tracking and scoreboard revenue.
+        Pick a quoted/booked Aloware call, set status to Quote sent or Deposit collected, and enter the job value.
+        That feeds the KPIs above and the scoreboard.
       </p>
 
       {message && (
@@ -137,10 +138,12 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
                     <td>{c.agent_name ?? '—'}</td>
                     <td>{fmtWhen(c.started_at)}</td>
                     <td>
-                      {c.quote_type ? (
-                        <span className={`badge ${c.quote_type === 'booked' ? 'good' : ''}`}>{c.quote_type}</span>
+                      {c.quote_type === 'booked' ? (
+                        <span className="badge good">Deposit collected</span>
+                      ) : c.quote_type === 'quoted' ? (
+                        <span className="badge">Quote sent</span>
                       ) : (
-                        <span className="mini-tag">quoted</span>
+                        <span className="mini-tag">Needs entry</span>
                       )}
                     </td>
                     <td>
@@ -175,8 +178,8 @@ export function AlowareQuoteEntry({ onSaved }: { onSaved?: () => void }) {
               <div className="form-group">
                 <label>Status</label>
                 <select value={quoteType} onChange={(e) => setQuoteType(e.target.value as 'quoted' | 'booked')}>
-                  <option value="quoted">Quoted</option>
-                  <option value="booked">Booked</option>
+                  <option value="quoted">Quote sent</option>
+                  <option value="booked">Deposit collected</option>
                 </select>
               </div>
 

@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   const user = await getServerSession();
-  if (!user || user.role !== 'executive') {
+  if (!user || (user.role !== 'executive' && user.role !== 'admin')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   try {
@@ -20,7 +20,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   const user = await getServerSession();
-  if (!user || user.role !== 'executive') {
+  if (!user || (user.role !== 'executive' && user.role !== 'admin')) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
   try {

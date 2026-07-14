@@ -847,6 +847,7 @@ export async function getQuoteTrackingStats(
     SELECT
       COALESCE(ag.name, cs.agent_name, 'Unknown') AS agent_name,
       COUNT(*) FILTER (WHERE cs.disposition_code = 'connected-quoted' OR cs.call_outcome = 'good')::int AS quotes_sent,
+      COUNT(*) FILTER (WHERE cs.quote_type = 'booked')::int AS deposits_booked,
       COALESCE(SUM(cs.job_value_cents) FILTER (WHERE cs.job_value_cents IS NOT NULL), 0)::bigint AS revenue_cents
     FROM call_sessions cs
     LEFT JOIN agents ag ON (
@@ -885,10 +886,12 @@ export async function getQuoteTrackingStats(
 
   const byAgent = agentQuoteRows.map((r) => {
     const name = String(r.agent_name);
+    const booked = Number(r.deposits_booked ?? 0);
+    const fromEvents = depositMap.get(name) ?? 0;
     return {
       agent_name: name,
       quotes_sent: Number(r.quotes_sent),
-      deposits_collected: depositMap.get(name) ?? 0,
+      deposits_collected: booked > 0 ? booked : fromEvents,
       revenue: Math.round(Number(r.revenue_cents ?? 0) / 100),
     };
   });
@@ -938,8 +941,8 @@ export async function getQuoteTrackingStats(
     byAgent,
     dataNote:
       totalQuoteValueCents > 0
-        ? 'Dollar values from manager-entered job details on quoted/booked calls.'
-        : 'Enter job value on quoted/booked Aloware calls below — counts come from dispositions.',
+        ? 'Dollar values and deposits from manager-entered Quote sent / Deposit collected details below.'
+        : 'Use Enter below to log Quote sent or Deposit collected with job value — disposition counts seed Quotes Sent.',
   } satisfies QuoteTrackingPayload;
 }
 
