@@ -767,6 +767,9 @@ export type ScoreboardTeamFilter = 'all' | 'aloware' | '8x8';
 export async function getScoreboardStats(teamFilter: ScoreboardTeamFilter = 'all') {
   const db = getDb();
   const weekMeta = getScoreboardWeek();
+  const weekStartYmd = weekMeta.weekStart.toLocaleDateString('en-CA', {
+    timeZone: 'America/New_York',
+  });
 
   const teams =
     teamFilter === 'aloware'
@@ -782,7 +785,7 @@ export async function getScoreboardStats(teamFilter: ScoreboardTeamFilter = 'all
     ORDER BY name ASC
   `;
 
-  const rows = await db`
+  const callRows = await db`
     SELECT
       ag.name AS agent_name,
       EXTRACT(ISODOW FROM COALESCE(cs.started_at, cs.created_at) AT TIME ZONE 'America/New_York')::int AS dow,
@@ -803,18 +806,55 @@ export async function getScoreboardStats(teamFilter: ScoreboardTeamFilter = 'all
     ORDER BY ag.name, dow
   `;
 
+  /** Granot day/week sheet → Deals (call quotes + email quotes + deposits). */
+  const granotRows = await db`
+    SELECT
+      ag.name AS agent_name,
+      m.period_type,
+      CASE
+        WHEN m.period_type = 'day' THEN EXTRACT(ISODOW FROM m.period_start)::int
+        ELSE NULL
+      END AS dow,
+      (COALESCE(m.quotes_call, 0) + COALESCE(m.quotes_email, 0) + COALESCE(m.deposits_collected, 0))::int AS deals
+    FROM agent_quote_manual m
+    INNER JOIN agents ag ON ag.id = m.agent_id
+    WHERE ag.team = ANY(${teams})
+      AND (
+        (
+          m.period_type = 'day'
+          AND m.period_start >= ${weekStartYmd}::date
+          AND m.period_start < (${weekStartYmd}::date + 7)
+          AND EXTRACT(ISODOW FROM m.period_start) BETWEEN 1 AND 6
+        )
+        OR (
+          m.period_type = 'week'
+          AND m.period_start = ${weekStartYmd}::date
+        )
+      )
+      AND (COALESCE(m.quotes_call, 0) + COALESCE(m.quotes_email, 0) + COALESCE(m.deposits_collected, 0)) > 0
+  `;
+
   return buildScoreboardPayload(
     roster.map((r) => ({
       agent_name: String(r.agent_name),
       team: String(r.team),
     })),
-    rows.map((r) => ({
-      agent_name: String(r.agent_name),
-      dow: Number(r.dow),
-      leads: Number(r.leads),
-      deals: Number(r.deals),
-      revenue_cents: Number(r.revenue_cents ?? 0),
-    })),
+    [
+      ...callRows.map((r) => ({
+        agent_name: String(r.agent_name),
+        dow: Number(r.dow),
+        leads: Number(r.leads),
+        deals: Number(r.deals),
+        revenue_cents: Number(r.revenue_cents ?? 0),
+      })),
+      ...granotRows.map((r) => ({
+        agent_name: String(r.agent_name),
+        dow: r.dow != null ? Number(r.dow) : null,
+        leads: 0,
+        deals: Number(r.deals),
+        revenue_cents: 0,
+      })),
+    ],
     weekMeta
   );
 }

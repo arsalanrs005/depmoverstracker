@@ -170,9 +170,10 @@ export function formatRevenue(n: number): string {
   }).format(n);
 }
 
-type RawScoreboardRow = {
+export type RawScoreboardRow = {
   agent_name: string;
-  dow: number;
+  /** ISO day 1–6 for daily cells; omit/null for week-only Granot rollups (TOTAL only). */
+  dow: number | null;
   leads: number;
   deals: number;
   revenue_cents?: number;
@@ -194,12 +195,11 @@ export function buildScoreboardPayload(
   const agentMap = new Map(agents.map((a) => [a.agent_name, a]));
 
   for (const row of rows) {
-    const dayKey = dowToScoreboardDay(Number(row.dow));
-    if (!dayKey) continue;
-
     const leads = Number(row.leads) || 0;
     const deals = Number(row.deals) || 0;
     const revenue = Math.round(Number(row.revenue_cents ?? 0) / 100);
+    if (leads === 0 && deals === 0 && revenue === 0) continue;
+
     const cell: DayMetrics = { leads, deals, revenue };
 
     let agent = agentMap.get(row.agent_name);
@@ -214,15 +214,18 @@ export function buildScoreboardPayload(
       agentMap.set(row.agent_name, agent);
     }
 
-    agent.days[dayKey] = cell;
+    const dayKey = row.dow != null ? dowToScoreboardDay(Number(row.dow)) : null;
+    if (dayKey) {
+      agent.days[dayKey] = addDayMetrics(agent.days[dayKey], cell);
+      dayTotals[dayKey] = addDayMetrics(dayTotals[dayKey], cell);
+    }
     agent.totals = addDayMetrics(agent.totals, cell);
-    dayTotals[dayKey] = addDayMetrics(dayTotals[dayKey], cell);
   }
 
   agents.sort((a, b) => b.totals.leads - a.totals.leads || a.agent_name.localeCompare(b.agent_name));
 
-  const grandTotal = SCOREBOARD_DAYS.reduce(
-    (acc, d) => addDayMetrics(acc, dayTotals[d]),
+  const grandTotal = agents.reduce(
+    (acc, a) => addDayMetrics(acc, a.totals),
     emptyDayMetrics()
   );
 

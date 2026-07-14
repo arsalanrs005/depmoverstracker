@@ -67,7 +67,8 @@ export function DailyScoreboardTable({ data }: { data: ScoreboardPayload }) {
       </div>
 
       <p className="sb-legend">
-        Leads = calls handled · Deals = quoted · $ = manager-entered job value
+        Leads = calls handled · Deals = Aloware quoted + Granot (call quotes, email quotes, deposits) · $ =
+        Aloware job value
       </p>
     </div>
   );
