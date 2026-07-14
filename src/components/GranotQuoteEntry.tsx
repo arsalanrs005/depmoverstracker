@@ -13,47 +13,26 @@ type SheetRow = {
   depositsCollected: number;
 };
 
-function Stepper({
-  label,
+function NumCell({
   value,
   onChange,
-  accent,
+  ariaLabel,
 }: {
-  label: string;
   value: number;
   onChange: (n: number) => void;
-  accent?: 'call' | 'email' | 'deposit';
+  ariaLabel: string;
 }) {
   return (
-    <div className={`granot-stepper ${accent ? `accent-${accent}` : ''}`}>
-      <span className="granot-stepper-label">{label}</span>
-      <div className="granot-stepper-controls">
-        <button
-          type="button"
-          className="granot-step-btn"
-          aria-label={`Decrease ${label}`}
-          onClick={() => onChange(Math.max(0, value - 1))}
-        >
-          −
-        </button>
-        <input
-          className="granot-step-input"
-          type="number"
-          min={0}
-          inputMode="numeric"
-          value={value}
-          onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-        />
-        <button
-          type="button"
-          className="granot-step-btn"
-          aria-label={`Increase ${label}`}
-          onClick={() => onChange(value + 1)}
-        >
-          +
-        </button>
-      </div>
-    </div>
+    <input
+      className="granot-num"
+      type="number"
+      min={0}
+      inputMode="numeric"
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+      onFocus={(e) => e.target.select()}
+    />
   );
 }
 
@@ -139,35 +118,75 @@ export function GranotQuoteEntry({ onSaved }: { onSaved?: () => void }) {
   const aloware = rows.filter((r) => r.platform === 'aloware');
   const x8 = rows.filter((r) => r.platform === '8x8');
 
+  function renderTable(title: string, list: SheetRow[]) {
+    if (list.length === 0) return null;
+    return (
+      <div className="granot-group">
+        <h3 className="granot-group-title">{title}</h3>
+        <div className="table-wrap granot-table-wrap">
+          <table className="granot-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th className="num">Call</th>
+                <th className="num">Email</th>
+                <th className="num">Deposit</th>
+                <th className="num">Total quotes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((row) => (
+                <tr key={row.agentId}>
+                  <td className="granot-agent">{row.agentName}</td>
+                  <td className="num">
+                    <NumCell
+                      ariaLabel={`${row.agentName} call quotes`}
+                      value={row.quotesCall}
+                      onChange={(n) => updateRow(row.agentId, { quotesCall: n })}
+                    />
+                  </td>
+                  <td className="num">
+                    <NumCell
+                      ariaLabel={`${row.agentName} email quotes`}
+                      value={row.quotesEmail}
+                      onChange={(n) => updateRow(row.agentId, { quotesEmail: n })}
+                    />
+                  </td>
+                  <td className="num">
+                    <NumCell
+                      ariaLabel={`${row.agentName} deposits`}
+                      value={row.depositsCollected}
+                      onChange={(n) => updateRow(row.agentId, { depositsCollected: n })}
+                    />
+                  </td>
+                  <td className="num granot-row-total">{row.quotesCall + row.quotesEmail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <section className="granot-panel">
       <div className="granot-panel-head">
         <div>
-          <p className="granot-kicker">From Granot → here</p>
-          <h2 className="granot-title">Log quotes &amp; deposits by agent</h2>
+          <h2 className="granot-title">Granot entry</h2>
           <p className="granot-sub">
-            Open Granot, then tap the numbers for each agent — Call quotes, Email quotes, and Deposits.
-            Save once when you&apos;re done.
+            Enter each agent&apos;s call quotes, email quotes, and deposits for the selected day or week.
           </p>
         </div>
-        <div className="granot-totals">
-          <div>
-            <strong>{totals.call + totals.email}</strong>
-            <span>Quotes</span>
-          </div>
-          <div>
-            <strong>{totals.call}</strong>
-            <span>Call</span>
-          </div>
-          <div>
-            <strong>{totals.email}</strong>
-            <span>Email</span>
-          </div>
-          <div>
-            <strong>{totals.deposits}</strong>
-            <span>Deposits</span>
-          </div>
-        </div>
+        <p className="granot-summary">
+          <span>{totals.call + totals.email} quotes</span>
+          <span aria-hidden>·</span>
+          <span>{totals.call} call</span>
+          <span aria-hidden>·</span>
+          <span>{totals.email} email</span>
+          <span aria-hidden>·</span>
+          <span>{totals.deposits} deposits</span>
+        </p>
       </div>
 
       <div className="granot-toolbar">
@@ -189,7 +208,7 @@ export function GranotQuoteEntry({ onSaved }: { onSaved?: () => void }) {
         </div>
 
         <label className="granot-date">
-          <span>{periodType === 'week' ? 'Any day in week' : 'Date'}</span>
+          <span>{periodType === 'week' ? 'Week of' : 'Date'}</span>
           <input
             type="date"
             value={date}
@@ -205,62 +224,22 @@ export function GranotQuoteEntry({ onSaved }: { onSaved?: () => void }) {
           disabled={saving || loading || !dirty}
           onClick={handleSave}
         >
-          {saving ? 'Saving…' : dirty ? 'Save all' : 'Saved'}
+          {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
         </button>
       </div>
 
       {message && (
-        <div
-          className={`card ${
-            /fail|error|forbidden/i.test(message) ? 'card-error' : 'card-success'
-          }`}
-          style={{ marginBottom: '1rem' }}
-        >
+        <p className={`granot-msg ${/fail|error|forbidden/i.test(message) ? 'is-error' : 'is-ok'}`}>
           {message}
-        </div>
+        </p>
       )}
 
       {loading && <p className="loading-pulse">Loading agents…</p>}
 
       {!loading && (
         <div className="granot-groups">
-          {[
-            { key: 'aloware', title: 'Aloware closers', list: aloware },
-            { key: '8x8', title: '8x8 closers', list: x8 },
-          ].map((group) =>
-            group.list.length === 0 ? null : (
-              <div key={group.key} className="granot-group">
-                <h3 className="granot-group-title">{group.title}</h3>
-                <div className="granot-cards">
-                  {group.list.map((row) => (
-                    <article key={row.agentId} className="granot-agent-card">
-                      <div className="granot-agent-name">{row.agentName}</div>
-                      <div className="granot-agent-fields">
-                        <Stepper
-                          label="Call"
-                          accent="call"
-                          value={row.quotesCall}
-                          onChange={(n) => updateRow(row.agentId, { quotesCall: n })}
-                        />
-                        <Stepper
-                          label="Email"
-                          accent="email"
-                          value={row.quotesEmail}
-                          onChange={(n) => updateRow(row.agentId, { quotesEmail: n })}
-                        />
-                        <Stepper
-                          label="Deposit"
-                          accent="deposit"
-                          value={row.depositsCollected}
-                          onChange={(n) => updateRow(row.agentId, { depositsCollected: n })}
-                        />
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            )
-          )}
+          {renderTable('Aloware closers', aloware)}
+          {renderTable('8x8 closers', x8)}
         </div>
       )}
     </section>
